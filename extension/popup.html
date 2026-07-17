@@ -3,138 +3,113 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>MH-Downsample Pro</title>
+    <title>MH-Dowsample Extension</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-
-    <!-- Zone 1: Status Bar -->
-    <div class="status-bar">
-      <div id="server-status" class="server-status">
-        <span class="dot"></span>
-        <span id="server-text">Đang kiểm tra...</span>
-      </div>
-      <span class="version-badge">Port 8765</span>
-    </div>
-
-    <main>
-
-      <!-- Zone 2: Header -->
-      <div class="header">
-        <div class="logo-icon">
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="11" width="3" height="6" rx="1.5" fill="#10B981" opacity="0.5"/>
-            <rect x="7" y="7" width="3" height="14" rx="1.5" fill="#10B981" opacity="0.7"/>
-            <rect x="12" y="3" width="3" height="22" rx="1.5" fill="#10B981"/>
-            <rect x="17" y="6" width="3" height="16" rx="1.5" fill="#10B981" opacity="0.7"/>
-            <rect x="22" y="10" width="3" height="8" rx="1.5" fill="#10B981" opacity="0.5"/>
-          </svg>
+    <div class="popup-shell">
+      <div class="status-bar">
+        <div id="server-status" class="server-status">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="server-text">Đang kiểm tra...</span>
         </div>
-        <h1>MH-Downsample Pro</h1>
-        <p class="subtitle">Trình thu thập âm thanh</p>
+        <span class="version-badge">Port 8765</span>
       </div>
 
-      <!-- Zone 3: Action Card -->
-      <div class="card" id="action-card">
-        <span class="badge" id="status-badge">TRẠNG THÁI SẴN SÀNG</span>
-        <p class="card-desc">Dán liên kết Splice hoặc link audio trực tiếp để tải file gốc về máy.</p>
-
-        <label for="url-input">Liên kết chứa âm thanh</label>
-        <textarea id="url-input" rows="3" placeholder="https://splice.com/sounds/..."></textarea>
-
-        <button id="btn-download" class="btn-primary" type="button">
-          <span id="btn-text">Quét và tải âm thanh</span>
-          <span class="btn-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 2.5v7.5m0 0L5 7m3 3l3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M3 12.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <main>
+        <header class="brand-header">
+          <div id="brand-logo" class="brand-mark" aria-label="MH-Dowsample Extension">
+            <svg viewBox="0 0 44 32" width="36" height="26" shape-rendering="crispEdges" aria-hidden="true">
+              <path d="M3 27V5h5l7 13L22 5h5v22h-5V13l-5.5 9h-3L8 13v14z" fill="#fff" />
+              <rect x="30" y="5" width="4" height="22" fill="#fff" />
+              <rect x="37" y="5" width="4" height="22" fill="#fff" />
+              <rect x="30" y="13" width="11" height="5" fill="#fff" />
+              <rect x="34.5" y="14.5" width="2" height="2" fill="#10B981" />
             </svg>
+          </div>
+          <div>
+            <h1><strong>MH</strong><span>-Dowsample</span><b>.</b><em>Extension</em></h1>
+            <p>Audio Collector and Loader</p>
+          </div>
+        </header>
+
+        <section class="card action-card" id="action-card">
+          <div class="card-heading">
+            <span class="badge" id="status-badge">TRẠNG THÁI SẴN SÀNG</span>
+            <p class="card-desc">Dán liên kết Splice hoặc link audio trực tiếp để tải file gốc về máy.</p>
+          </div>
+
+          <label for="url-input">Liên kết chứa âm thanh</label>
+          <textarea id="url-input" rows="3" placeholder="https://splice.com/sounds/..."></textarea>
+
+          <button id="btn-download" class="btn btn-primary" type="button">
+            <span id="btn-text">Quét và tải âm thanh</span>
+            <span class="btn-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2.5V10m0 0L5 7m3 3 3-3M3 12.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </button>
+        </section>
+
+        <section id="progress-section" class="card progress-card" hidden>
+          <div class="progress-header">
+            <span class="badge badge--processing" id="progress-badge">ĐANG XỬ LÝ</span>
+            <span class="progress-percent" id="progress-percent">0%</span>
+          </div>
+          <p class="progress-count">Đã tải <span id="counter">0/0</span> file</p>
+          <div class="progress-track" role="progressbar" aria-label="Tiến trình tải xuống" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-fill" id="progress-bar"></div>
+          </div>
+          <p class="current-file"><span>Đang xử lý:</span> <strong id="current-file"></strong></p>
+
+          <ul class="checklist" id="checklist">
+            <li><span class="check-icon check-icon--pending" id="check-link">&#9675;</span><span>Nhận liên kết</span></li>
+            <li><span class="check-icon check-icon--pending" id="check-discover">&#9675;</span><span>Tìm đường dẫn âm thanh</span></li>
+            <li><span class="check-icon check-icon--pending" id="check-download">&#9675;</span><span>Tải file gốc</span></li>
+            <li><span class="check-icon check-icon--pending" id="check-done">&#9675;</span><span>Hoàn tất xử lý</span></li>
+          </ul>
+        </section>
+
+        <section id="results-section" class="completion-card" hidden>
+          <div class="completion-header">
+            <span class="badge badge--ready">HOÀN TẤT</span>
+            <span class="completion-percent">100%</span>
+          </div>
+          <div class="completion-summary">
+            <span class="completion-check" aria-hidden="true">
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none"><path d="m5 10 3 3 7-7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </span>
+            <div>
+              <h2>Đã tải xuống thành công</h2>
+              <p>Đã tải xong <strong id="stat-downloaded">0</strong> / <span id="stat-discovered">0</span> file</p>
+            </div>
+          </div>
+          <p class="failed-row">Lỗi tải: <strong id="stat-failed">0</strong></p>
+          <div class="save-location">
+            <span>THƯ MỤC LƯU</span>
+            <p id="result-dir" title=""></p>
+          </div>
+        </section>
+
+        <section id="empty-state" class="card empty-card" hidden>
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="1.25" stroke-dasharray="4 3" />
+            <path d="M19 24h10M24 19v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          <p>Không tìm thấy link âm thanh trên trang này.</p>
+        </section>
+
+        <p id="message" class="message" aria-live="polite"></p>
+
+        <button id="btn-open" class="btn btn-secondary" type="button" hidden>
+          <span>Mở thư mục tải</span>
+          <span class="btn-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 12.5V5a1 1 0 0 1 1-1h2.6a1 1 0 0 1 .7.3l1.3 1.3a1 1 0 0 0 .7.4H13a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg>
           </span>
         </button>
-      </div>
-
-      <!-- Zone 4: Progress -->
-      <div id="progress-section" class="card" hidden>
-        <div class="progress-header">
-          <span class="badge badge--processing" id="progress-badge">ĐANG XỬ LÝ</span>
-          <span class="progress-text" id="counter">0/0</span>
-        </div>
-
-        <div class="progress-track">
-          <div class="progress-fill" id="progress-bar"></div>
-        </div>
-
-        <p class="progress-text" id="current-file"></p>
-
-        <ul class="checklist" id="checklist">
-          <li>
-            <span class="check-icon check-icon--pending" id="check-link">&#9675;</span>
-            <span>Nhận liên kết</span>
-          </li>
-          <li>
-            <span class="check-icon check-icon--pending" id="check-discover">&#9675;</span>
-            <span>Tìm đường dẫn âm thanh</span>
-          </li>
-          <li>
-            <span class="check-icon check-icon--pending" id="check-download">&#9675;</span>
-            <span>Tải file gốc</span>
-          </li>
-          <li>
-            <span class="check-icon check-icon--pending" id="check-done">&#9675;</span>
-            <span>Hoàn tất xử lý</span>
-          </li>
-        </ul>
-      </div>
-
-      <!-- Zone 5: Results -->
-      <div id="results-section" class="card" hidden>
-        <span class="badge badge--ready">HOÀN TẤT</span>
-
-        <div style="margin-top: 14px">
-          <div class="result-row">
-            <span class="result-label">Đã tìm thấy</span>
-            <span class="result-value" id="stat-discovered">0</span>
-          </div>
-          <div class="result-row">
-            <span class="result-label">Đã tải thành công</span>
-            <span class="result-value result-value--accent" id="stat-downloaded">0</span>
-          </div>
-          <div class="result-row">
-            <span class="result-label">Lỗi tải</span>
-            <span class="result-value result-value--amber" id="stat-failed">0</span>
-          </div>
-        </div>
-
-        <p class="result-dir" id="result-dir" title=""></p>
-      </div>
-
-      <!-- Empty State -->
-      <div id="empty-state" class="card" hidden>
-        <div class="empty-state">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="24" cy="24" r="20" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
-            <path d="M19 24h10" stroke="#6B7280" stroke-width="1.5" stroke-linecap="round"/>
-            <path d="M24 19v10" stroke="#6B7280" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-          <p class="empty-text">Không tìm thấy đường dẫn âm thanh trên trang này.</p>
-        </div>
-      </div>
-
-      <!-- Message -->
-      <p id="message" class="message"></p>
-
-      <!-- Open Folder Button -->
-      <button id="btn-open" class="btn-secondary" type="button" hidden>
-        <span>Mở thư mục tải</span>
-        <span class="btn-icon">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M2 12.5V5a1 1 0 011-1h2.586a1 1 0 01.707.293L7.586 5.586A1 1 0 008.293 6H13a1 1 0 011 1v5.5a1 1 0 01-1 1H3a1 1 0 01-1-1z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          </svg>
-        </span>
-      </button>
-
-    </main>
-
+      </main>
+    </div>
     <script src="popup.js"></script>
   </body>
 </html>
