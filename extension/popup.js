@@ -15,6 +15,7 @@ const progressSection = document.querySelector("#progress-section");
 const progressBadge = document.querySelector("#progress-badge");
 const counter = document.querySelector("#counter");
 const progressBar = document.querySelector("#progress-bar");
+const progressPercent = document.querySelector("#progress-percent");
 const currentFile = document.querySelector("#current-file");
 const checkLink = document.querySelector("#check-link");
 const checkDiscover = document.querySelector("#check-discover");
@@ -27,6 +28,7 @@ const statFailed = document.querySelector("#stat-failed");
 const resultDir = document.querySelector("#result-dir");
 const emptyState = document.querySelector("#empty-state");
 const message = document.querySelector("#message");
+const brandLogo = document.querySelector("#brand-logo");
 
 /* ─── STATE ─── */
 
@@ -43,6 +45,11 @@ let activeJobId = null;
 function showMessage(text, kind) {
   message.textContent = text;
   message.className = "message" + (kind ? " message--" + kind : "");
+}
+
+function setWorkingState(working) {
+  brandLogo.classList.toggle("active", working);
+  btnDownload.classList.toggle("loading", working);
 }
 
 /**
@@ -127,11 +134,13 @@ async function checkServer() {
     serverStatus.classList.add("online");
     serverText.textContent = "Server k\u1ebft n\u1ed1i \u00b7 " + health.download_root;
     btnDownload.disabled = false;
+    setWorkingState(false);
     setBadge(statusBadge, "TR\u1ea0NG TH\u00c1I S\u1eb4N S\u00c0NG", "ready");
   } catch (err) {
     serverStatus.classList.remove("online");
     serverText.textContent = "Server ngo\u1ea1i tuy\u1ebfn";
     btnDownload.disabled = true;
+    setWorkingState(false);
     setBadge(statusBadge, "KH\u00d4NG K\u1ebeT N\u1ed0I", "error");
     showMessage("H\u00e3y m\u1edf file START-SERVER.cmd trong th\u01b0 m\u1ee5c d\u1ef1 \u00e1n.", "error");
   }
@@ -243,6 +252,7 @@ function render(job) {
     showMessage(successMsg, "success");
 
     btnDownload.disabled = false;
+    setWorkingState(false);
     btnText.textContent = "Qu\u00e9t v\u00e0 t\u1ea3i \u00e2m thanh";
     return true;
   }
@@ -262,6 +272,7 @@ function render(job) {
       setBadge(progressBadge, statusLabels.failed || job.status, "error");
       counter.textContent = total > 0 ? job.downloaded + "/" + total : "0/0";
       progressBar.style.width = percent + "%";
+      progressPercent.textContent = percent + "%";
       currentFile.textContent = "";
       updateChecklist(job);
     }
@@ -269,6 +280,7 @@ function render(job) {
     showMessage(job.error || "Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c file.", "error");
     setBadge(statusBadge, "L\u1ed6I", "error");
     btnDownload.disabled = false;
+    setWorkingState(false);
     btnText.textContent = "Qu\u00e9t v\u00e0 t\u1ea3i \u00e2m thanh";
     return true;
   }
@@ -283,8 +295,12 @@ function render(job) {
 
   counter.textContent = total > 0 ? job.downloaded + "/" + total : "0/?";
   progressBar.style.width = percent + "%";
+  progressPercent.textContent = percent + "%";
   currentFile.textContent = job.current || "";
   updateChecklist(job);
+  setWorkingState(true);
+  btnDownload.disabled = true;
+  btnText.textContent = job.status === "discovering" ? "Đang quét..." : "Đang tải...";
 
   return false;
 }
@@ -309,6 +325,7 @@ async function pollJob(jobId) {
   } catch (err) {
     showMessage(err.message, "error");
     btnDownload.disabled = false;
+    setWorkingState(false);
     btnText.textContent = "Qu\u00e9t v\u00e0 t\u1ea3i \u00e2m thanh";
   }
 }
@@ -326,6 +343,7 @@ btnDownload.addEventListener("click", async function () {
 
   /* Disable button and reset UI */
   btnDownload.disabled = true;
+  setWorkingState(true);
   btnText.textContent = "\u0110ang g\u1eedi...";
   btnOpen.hidden = true;
   resultsSection.hidden = true;
@@ -351,6 +369,7 @@ btnDownload.addEventListener("click", async function () {
   } catch (err) {
     showMessage(err.message, "error");
     btnDownload.disabled = false;
+    setWorkingState(false);
     btnText.textContent = "Qu\u00e9t v\u00e0 t\u1ea3i \u00e2m thanh";
   }
 });
