@@ -1,0 +1,555 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --canvas: #FAFAF8;
+  --surface: #FFFFFF;
+  --ink: #1A1A1A;
+  --muted: #6B7280;
+  --border: rgba(0, 0, 0, 0.06);
+  --accent: #10B981;
+  --accent-hover: #059669;
+  --accent-soft: rgba(16, 185, 129, 0.08);
+  --danger: #EF4444;
+  --danger-soft: rgba(239, 68, 68, 0.08);
+  --amber: #F59E0B;
+  --amber-soft: rgba(245, 158, 11, 0.08);
+  --radius-card: 20px;
+  --radius-btn: 12px;
+  --radius-pill: 9999px;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 400px;
+  max-height: 600px;
+  overflow-y: auto;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── CUSTOM SCROLLBAR ─── */
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ─── STATUS BAR (ZONE 1) ─── */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--canvas);
+}
+
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
+.server-status.online .dot {
+  background: var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.version-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  letter-spacing: 0.02em;
+}
+
+/* ─── MAIN CONTAINER ─── */
+
+main {
+  padding: 16px;
+}
+
+/* ─── HEADER (ZONE 2) ─── */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin: 4px 0 20px;
+}
+
+.logo-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 12px 0 2px;
+  letter-spacing: -0.3px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* ─── CARD ─── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+/* ─── BADGE ─── */
+
+.badge {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-weight: 500;
+}
+
+.badge--ready {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.badge--error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.badge--processing {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+/* ─── CARD DESCRIPTION ─── */
+
+.card-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0 16px;
+  line-height: 1.55;
+}
+
+/* ─── INPUT ─── */
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--ink);
+  padding: 12px;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 300ms var(--ease), box-shadow 300ms var(--ease);
+}
+
+textarea::placeholder {
+  color: rgba(107, 114, 128, 0.5);
+}
+
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+/* ─── PRIMARY BUTTON (CTA) ─── */
+
+.btn-primary {
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: var(--accent);
+  color: #FFFFFF;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  transition: background 400ms var(--ease), transform 200ms var(--ease);
+  position: relative;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  background: #D1D5DB;
+  color: #9CA3AF;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary:disabled:hover {
+  background: #D1D5DB;
+}
+
+.btn-primary:disabled .btn-icon {
+  opacity: 0.5;
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 300ms var(--ease);
+}
+
+.btn-primary:hover:not(:disabled) .btn-icon {
+  transform: translateX(2px);
+}
+
+/* ─── SECONDARY BUTTON ─── */
+
+.btn-secondary {
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: var(--ink);
+  color: #FFFFFF;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+  transition: opacity 300ms var(--ease), transform 200ms var(--ease);
+}
+
+.btn-secondary:hover {
+  opacity: 0.88;
+}
+
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary .btn-icon {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── PROGRESS SECTION (ZONE 4) ─── */
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-track {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  margin: 14px 0 10px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  width: 0%;
+  transition: width 400ms var(--ease);
+}
+
+.progress-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+/* ─── CHECKLIST ─── */
+
+.checklist {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.checklist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.check-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  transition: all 300ms var(--ease);
+}
+
+.check-icon--done {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.check-icon--active {
+  background: var(--amber-soft);
+  color: var(--amber);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.check-icon--pending {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--muted);
+}
+
+.check-icon--error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ─── RESULTS CARD (ZONE 5) ─── */
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-row:last-child {
+  border-bottom: none;
+}
+
+.result-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.result-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.result-value--accent {
+  color: var(--accent);
+}
+
+.result-value--amber {
+  color: var(--amber);
+}
+
+.result-value--danger {
+  color: var(--danger);
+}
+
+.result-dir {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  cursor: default;
+}
+
+/* ─── EMPTY STATE ─── */
+
+.empty-state {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+/* ─── MESSAGE ─── */
+
+.message {
+  font-size: 12px;
+  line-height: 1.45;
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+
+.message--error {
+  color: var(--danger);
+}
+
+.message--success {
+  color: var(--accent);
+}
+
+/* ─── SPINNER ─── */
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #FFFFFF;
+  border-radius: 50%;
+  animation: spin 600ms linear infinite;
+  flex-shrink: 0;
+}
+
+/* ─── ANIMATIONS ─── */
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 400ms var(--ease) both;
+}
+
+.fade-in-up:nth-child(1) { animation-delay: 0ms; }
+.fade-in-up:nth-child(2) { animation-delay: 50ms; }
+.fade-in-up:nth-child(3) { animation-delay: 100ms; }
+.fade-in-up:nth-child(4) { animation-delay: 150ms; }
+.fade-in-up:nth-child(5) { animation-delay: 200ms; }
+.fade-in-up:nth-child(6) { animation-delay: 250ms; }
+.fade-in-up:nth-child(7) { animation-delay: 300ms; }
+.fade-in-up:nth-child(8) { animation-delay: 350ms; }
+.fade-in-up:nth-child(9) { animation-delay: 400ms; }
+.fade-in-up:nth-child(10) { animation-delay: 450ms; }
+
+/* ─── UTILITY ─── */
+
+[hidden] {
+  display: none !important;
+}
