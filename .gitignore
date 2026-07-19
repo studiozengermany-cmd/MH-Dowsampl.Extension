@@ -1,6 +1,10 @@
 .venv/
+.build-venv/
+build/
+release/
 __pycache__/
 *.pyc
 *.part
 .DS_Store
 .ai-backups/
+node_modules/
