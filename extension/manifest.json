@@ -1,12 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "MH-Downsample Pro",
-  "version": "1.0.0",
-  "description": "Trình thu thập và tải file âm thanh gốc từ web về máy local.",
-  "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "name": "MH-Dowsample Extension",
+  "version": "1.1.0",
+  "description": "Thu thập và tải file âm thanh công khai về máy local theo yêu cầu của người dùng.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage", "downloads"],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*",
+    "https://*.onrender.com/*",
+    "https://splice.com/*",
+    "https://*.splice.com/*"
+  ],
   "action": {
-    "default_title": "MH-Downsample Pro",
+    "default_title": "MH-Dowsample Extension",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    },
     "default_popup": "popup.html"
   }
 }

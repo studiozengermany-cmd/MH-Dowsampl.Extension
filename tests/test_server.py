@@ -31,6 +31,44 @@ class FakeCrawler:
         return destination
 
 
+class ProvidedAssetCrawler(FakeCrawler):
+    def discover(self, page_url: str) -> list[AudioAsset]:
+        raise AssertionError("Provided extension assets must bypass server page discovery")
+
+
+class CatalogueCrawler(FakeCrawler):
+    def discover(self, page_url: str) -> list[AudioAsset]:
+        return [
+            AudioAsset(
+                "https://cdn.test/sample.mp3",
+                "Integration sample",
+                bpm=98,
+                musical_key="D min",
+            )
+        ]
+
+
+class FakeAnalyzer:
+    def analyze(self, filepath: Path) -> dict[str, object]:
+        return {
+            "passed": True,
+            "content_type": "one-shot",
+            "loop_score": 0.0,
+            "duration_sec": 0.5,
+            "bpm": 0,
+            "key": "Unknown",
+            "issues": [],
+            "analysis_error": "",
+        }
+
+
+class MetadataAnalyzer(FakeAnalyzer):
+    def analyze(self, filepath: Path) -> dict[str, object]:
+        result = super().analyze(filepath)
+        result.update(bpm=124, key="F# min")
+        return result
+
+
 class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -73,6 +111,21 @@ class ServerTests(unittest.TestCase):
         connection.close()
         data = json.loads(raw.decode("utf-8")) if raw else {}
         return response.status, data, response_headers
+
+    def request_raw(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, bytes, dict[str, str]]:
+        connection = http.client.HTTPConnection(backend_server.HOST, self.port, timeout=2)
+        connection.request(method, path, headers=headers or {})
+        response = connection.getresponse()
+        raw = response.read()
+        response_headers = {key: value for key, value in response.getheaders()}
+        connection.close()
+        return response.status, raw, response_headers
 
     def wait_for_job(self, job_id: str) -> dict[str, object]:
         deadline = time.monotonic() + 2
@@ -124,6 +177,64 @@ class ServerTests(unittest.TestCase):
         )
         self.assertEqual(status, 204)
         self.assertEqual(headers["Access-Control-Allow-Private-Network"], "true")
+
+    def test_remote_mode_requires_extension_access_key(self) -> None:
+        environment = {
+            "MH_REMOTE_MODE": "true",
+            "MH_EXTENSION_ACCESS_KEY": "test-secret",
+        }
+        with patch.dict(os.environ, environment, clear=False):
+            status, _, _ = self.request(
+                "GET",
+                "/health",
+                headers={"Origin": EXTENSION_ORIGIN},
+            )
+            self.assertEqual(status, 403)
+
+            status, payload, headers = self.request(
+                "GET",
+                "/health",
+                headers={
+                    "Origin": EXTENSION_ORIGIN,
+                    "X-MH-Access-Key": "test-secret",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["delivery"], "browser")
+            self.assertIn("X-MH-Access-Key", headers["Access-Control-Allow-Headers"])
+
+            status, _, headers = self.request(
+                "OPTIONS",
+                "/jobs",
+                headers={
+                    "Origin": EXTENSION_ORIGIN,
+                    "Access-Control-Request-Headers": "X-MH-Access-Key, Content-Type",
+                },
+            )
+            self.assertEqual(status, 204)
+            self.assertEqual(headers["Access-Control-Allow-Origin"], EXTENSION_ORIGIN)
+
+    def test_remote_source_validation_blocks_private_and_unapproved_hosts(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "MH_REMOTE_MODE": "true",
+                "MH_ALLOWED_SOURCE_HOSTS": "allowed.example",
+            },
+            clear=False,
+        ):
+            with self.assertRaisesRegex(ValueError, "chưa được cho phép"):
+                backend_server.validate_remote_source_url("https://other.example/file.wav")
+            with patch.object(
+                backend_server.socket,
+                "getaddrinfo",
+                return_value=[(2, 1, 6, "", ("127.0.0.1", 443))],
+            ):
+                with self.assertRaisesRegex(ValueError, "nội bộ"):
+                    backend_server.validate_remote_source_url(
+                        "https://allowed.example/file.wav"
+                    )
 
     def test_rejects_invalid_job_url(self) -> None:
         status, payload, _ = self.request(
@@ -381,6 +492,7 @@ class ServerTests(unittest.TestCase):
             root = Path(temp_dir)
             with (
                 patch.object(backend_server, "AudioCrawler", return_value=FakeCrawler()),
+                patch.object(backend_server, "SampleAnalyzer", return_value=FakeAnalyzer()),
             ):
                 status, created, _ = self.request(
                     "POST",
@@ -398,11 +510,194 @@ class ServerTests(unittest.TestCase):
 
                 self.assertEqual(job["status"], "completed")
                 self.assertEqual(job["downloaded"], 1)
+                self.assertEqual(job["analyzed"], 1)
+                self.assertEqual(job["one_shots"], 1)
+                self.assertEqual(job["loops"], 0)
+                self.assertEqual(job["audio_errors"], 0)
+                self.assertEqual(job["sample_results_total"], 1)
                 self.assertEqual(job["download_root"], str(root.resolve()))
                 self.assertEqual(job["download_root_source"], "per_job")
                 self.assertFalse(job["download_root_remembered"])
-                output = Path(str(job["output_dir"])) / "Integration sample.mp3"
+                output = (
+                    Path(str(job["output_dir"]))
+                    / "One-Shots"
+                    / "Integration sample.mp3"
+                )
                 self.assertEqual(output.read_bytes(), b"ID3-integration")
+                self.assertTrue(Path(str(job["report_path"])).is_file())
+
+                status, samples, _ = self.request(
+                    "GET",
+                    f"/jobs/{job_id}/samples?offset=0&limit=10",
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(samples["total"], 1)
+                self.assertEqual(samples["items"][0]["content_type"], "one-shot")
+                self.assertEqual(samples["items"][0]["category"], "One-Shots")
+
+                status, files, _ = self.request(
+                    "GET",
+                    f"/jobs/{job_id}/files",
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(files["total"], 1)
+                item = files["files"][0]
+                self.assertEqual(item["name"], "Integration sample.mp3")
+                status, raw, headers = self.request_raw(
+                    "GET",
+                    str(item["download_url"]),
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(raw, b"ID3-integration")
+                self.assertIn("attachment", headers["Content-Disposition"])
+
+    def test_sample_results_api_validates_pagination(self) -> None:
+        job = backend_server.Job(id="abc123", url="https://example.com")
+        with backend_server.LOCK:
+            backend_server.JOBS[job.id] = job
+        status, payload, _ = self.request(
+            "GET",
+            "/jobs/abc123/samples?offset=bad",
+            headers={"Origin": EXTENSION_ORIGIN},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("số nguyên", str(payload["error"]))
+
+    def test_job_can_be_cancelled_through_api(self) -> None:
+        job = backend_server.Job(id="cancel123", url="https://example.com")
+        with backend_server.LOCK:
+            backend_server.JOBS[job.id] = job
+        status, payload, _ = self.request(
+            "POST",
+            "/jobs/cancel123/cancel",
+            payload={},
+            headers={"Origin": EXTENSION_ORIGIN},
+        )
+        self.assertEqual(status, 202)
+        self.assertEqual(payload["status"], "cancelling")
+        self.assertTrue(job.cancel_requested)
+
+    def test_expired_render_job_removes_temporary_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            folder = root / "expired-job"
+            folder.mkdir()
+            (folder / "sample.wav").write_bytes(b"RIFF0000WAVE")
+            job = backend_server.Job(
+                id="expired123",
+                url="https://splice.com/example",
+                status="completed",
+                output_dir=str(folder),
+                finished_epoch=time.time() - 10,
+            )
+            with backend_server.LOCK:
+                backend_server.JOBS[job.id] = job
+                with (
+                    patch.object(backend_server, "remote_mode", return_value=True),
+                    patch.object(backend_server, "remote_download_root", return_value=root),
+                    patch.object(backend_server, "job_ttl_seconds", return_value=1),
+                ):
+                    backend_server.cleanup_jobs_locked()
+            self.assertFalse(folder.exists())
+            self.assertNotIn(job.id, backend_server.JOBS)
+
+    def test_job_adds_analyzed_tempo_and_key_to_downloaded_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with (
+                patch.object(backend_server, "AudioCrawler", return_value=FakeCrawler()),
+                patch.object(backend_server, "SampleAnalyzer", return_value=MetadataAnalyzer()),
+            ):
+                status, created, _ = self.request(
+                    "POST",
+                    "/jobs",
+                    payload={"url": "https://example.com/samples", "download_dir": str(root)},
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                self.assertEqual(status, 202)
+                job = self.wait_for_job(str(created["id"]))
+                output = (
+                    Path(str(job["output_dir"]))
+                    / "One-Shots"
+                    / "Integration sample [124 BPM] [F# Minor].mp3"
+                )
+                self.assertEqual(output.read_bytes(), b"ID3-integration")
+
+    def test_extension_can_submit_original_asset_without_sending_session_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with (
+                patch.object(
+                    backend_server,
+                    "AudioCrawler",
+                    return_value=ProvidedAssetCrawler(),
+                ),
+                patch.object(backend_server, "SampleAnalyzer", return_value=FakeAnalyzer()),
+            ):
+                status, created, _ = self.request(
+                    "POST",
+                    "/jobs",
+                    payload={
+                        "url": "https://splice.com/sounds/packs/example",
+                        "download_dir": str(root),
+                        "assets": [
+                            {
+                                "url": "https://cdn.test/original.wav?signature=temporary",
+                                "title": "Original Kick",
+                                "bpm": 128,
+                                "musical_key": "C# minor",
+                                "declared_format": "wav",
+                            }
+                        ],
+                    },
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                self.assertEqual(status, 202)
+                job_id = str(created["id"])
+                job = self.wait_for_job(job_id)
+                self.assertEqual(job["status"], "completed")
+                _, samples, _ = self.request(
+                    "GET",
+                    f"/jobs/{job_id}/samples",
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                item = samples["items"][0]
+                self.assertEqual(item["metadata_source"], "extension_page")
+                self.assertEqual(item["source_url"], "https://cdn.test/original.wav")
+                self.assertNotIn("signature", str(item["source_url"]))
+
+    def test_catalogue_tempo_and_key_take_priority_over_analysis(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with (
+                patch.object(backend_server, "AudioCrawler", return_value=CatalogueCrawler()),
+                patch.object(backend_server, "SampleAnalyzer", return_value=MetadataAnalyzer()),
+            ):
+                _, created, _ = self.request(
+                    "POST",
+                    "/jobs",
+                    payload={"url": "https://example.com/samples", "download_dir": str(root)},
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                job_id = str(created["id"])
+                job = self.wait_for_job(job_id)
+                output = (
+                    Path(str(job["output_dir"]))
+                    / "One-Shots"
+                    / "Integration sample [98 BPM] [D Minor].mp3"
+                )
+                self.assertTrue(output.is_file())
+                _, samples, _ = self.request(
+                    "GET",
+                    f"/jobs/{job_id}/samples",
+                    headers={"Origin": EXTENSION_ORIGIN},
+                )
+                analysis = samples["items"][0]["analysis"]
+                self.assertEqual(analysis["bpm_source"], "catalogue")
+                self.assertEqual(analysis["key_source"], "catalogue")
 
     def test_cancelled_folder_prompt_stops_before_discovery(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
