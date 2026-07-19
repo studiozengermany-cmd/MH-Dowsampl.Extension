@@ -122,6 +122,8 @@ def allowed_source_hosts() -> tuple[str, ...]:
 def hostname_allowed(hostname: str) -> bool:
     hostname = hostname.rstrip(".").lower()
     for rule in allowed_source_hosts():
+        if rule == "*":
+            return True
         if rule.startswith(".") and hostname.endswith(rule) and hostname != rule[1:]:
             return True
         if hostname == rule:

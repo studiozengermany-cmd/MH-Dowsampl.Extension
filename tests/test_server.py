@@ -236,6 +236,36 @@ class ServerTests(unittest.TestCase):
                         "https://allowed.example/file.wav"
                     )
 
+    def test_remote_source_wildcard_allows_public_hosts_but_blocks_private_ips(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "MH_REMOTE_MODE": "true",
+                "MH_ALLOWED_SOURCE_HOSTS": "*",
+            },
+            clear=False,
+        ):
+            with patch.object(
+                backend_server.socket,
+                "getaddrinfo",
+                return_value=[(2, 1, 6, "", ("93.184.216.34", 443))],
+            ):
+                self.assertEqual(
+                    backend_server.validate_remote_source_url(
+                        "https://samples.example/file.wav"
+                    ),
+                    "https://samples.example/file.wav",
+                )
+            with patch.object(
+                backend_server.socket,
+                "getaddrinfo",
+                return_value=[(2, 1, 6, "", ("10.0.0.8", 443))],
+            ):
+                with self.assertRaisesRegex(ValueError, "nội bộ"):
+                    backend_server.validate_remote_source_url(
+                        "https://private.example/file.wav"
+                    )
+
     def test_rejects_invalid_job_url(self) -> None:
         status, payload, _ = self.request(
             "POST",
