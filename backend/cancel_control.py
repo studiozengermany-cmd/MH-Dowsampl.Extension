@@ -56,7 +56,6 @@ def resolve_download_root(
         return selected, "per_job", False
 
     if _hard._server.ask_for_download_root_each_time():
-        # Migrate the bad per-file setting back to the practical single-folder flow.
         _hard._server.save_ask_each_time(False)
 
     configured = _hard._server.default_download_root()
@@ -173,7 +172,12 @@ def run_job(
 ) -> None:
     crawler = _hard.AudioCrawler()
     try:
-        root, root_source, remembered = resolve_download_root(download_dir, set_default)
+        # Resolve through the public compatibility surface so tests and callers can
+        # supply a per-job root without touching this module's internals.
+        root, root_source, remembered = _hard.resolve_download_root(
+            download_dir,
+            set_default,
+        )
         folder = _hard._server.job_folder(root, job.urls, job.id)
         folder.mkdir(parents=True, exist_ok=True)
         _hard._server.update(
@@ -257,6 +261,19 @@ _hard._server.discover_assets = discover_assets
 _hard._server.run_job = run_job
 _hard.Handler.do_POST = _do_post_with_cancel
 _hard.Handler.server_version = f"MH-Dowsample/{APP_VERSION}"
+
+# server.py exposes server_hardening as the compatibility module. Keep the
+# original server names available for existing callers and integration tests.
+for _name in (
+    "HOST",
+    "PORT",
+    "ThreadingHTTPServer",
+    "choose_download_root",
+    "choose_initial_download_root",
+    "ensure_initial_download_root",
+    "saved_download_root",
+):
+    setattr(_hard, _name, getattr(_hard._server, _name))
 
 try:
     if _hard._server.ask_for_download_root_each_time():
