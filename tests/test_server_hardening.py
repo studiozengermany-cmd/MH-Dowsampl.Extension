@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import server as backend_server  # noqa: E402
+import server_streaming  # noqa: E402
 from crawler import AudioAsset  # noqa: E402
 
 
@@ -35,6 +36,16 @@ class OrganizingCrawler:
         payload = valid_wav_bytes() if "Loop" in str(asset.title) else valid_wav_bytes()[:100]
         path.write_bytes(payload)
         return path
+
+
+def selected_download(_crawler: object, asset: AudioAsset, selector: object) -> Path:
+    destination = selector(f"{asset.title}.wav", ".wav")
+    if destination is None:
+        raise backend_server.DestinationSelectionCancelled("Đã hủy lưu file này")
+    path = Path(destination)
+    payload = valid_wav_bytes() if "Loop" in str(asset.title) else valid_wav_bytes()[:100]
+    path.write_bytes(payload)
+    return path
 
 
 class ServerHardeningTests(unittest.TestCase):
@@ -115,6 +126,10 @@ class ServerHardeningTests(unittest.TestCase):
                 backend_server,
                 "_staging_folder",
                 return_value=staging,
+            ), patch.object(
+                server_streaming,
+                "download_with_selector",
+                side_effect=selected_download,
             ), patch.object(
                 backend_server,
                 "choose_download_file",
