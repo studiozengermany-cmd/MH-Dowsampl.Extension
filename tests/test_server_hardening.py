@@ -96,6 +96,39 @@ class ServerHardeningTests(unittest.TestCase):
             self.assertEqual(source, "prompt_per_file")
             self.assertFalse(remembered)
 
+    def test_per_file_mode_opens_one_save_dialog_for_each_asset(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            staging = root / "staging"
+            job = backend_server.Job(
+                id="prompt",
+                url="https://example.test/source",
+                urls=["https://example.test/source"],
+                source_total=1,
+            )
+            destinations = [root / "Saved Loop.wav", root / "Saved Kick.wav"]
+            with patch.object(backend_server, "AudioCrawler", return_value=OrganizingCrawler()), patch.object(
+                backend_server,
+                "resolve_download_root",
+                return_value=(root, "prompt_per_file", False),
+            ), patch.object(
+                backend_server,
+                "_staging_folder",
+                return_value=staging,
+            ), patch.object(
+                backend_server,
+                "choose_download_file",
+                side_effect=destinations,
+            ) as save_dialog:
+                backend_server.run_job(job)
+
+            self.assertEqual(save_dialog.call_count, 2)
+            self.assertEqual(job.status, "completed")
+            self.assertEqual(job.downloaded, 2)
+            self.assertTrue((root / "Saved Loop.wav").is_file())
+            self.assertTrue((root / "Saved Kick.wav").is_file())
+            self.assertFalse(staging.exists())
+
     def test_run_job_organizes_categories_and_keeps_uncertain_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
