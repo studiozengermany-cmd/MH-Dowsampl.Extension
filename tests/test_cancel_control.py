@@ -50,31 +50,24 @@ class CancelControlTests(unittest.TestCase):
         self.assertEqual(assets, [])
         self.assertEqual(job.source_processed, 0)
 
-    def test_old_per_file_setting_is_migrated_to_one_folder(self) -> None:
+    def test_ask_each_time_means_one_folder_prompt_for_the_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir).resolve()
+            selected_root = Path(temp_dir).resolve()
             with patch.object(
                 cancel_control._hard._server,
                 "ask_for_download_root_each_time",
                 return_value=True,
             ), patch.object(
                 cancel_control._hard._server,
-                "save_ask_each_time",
-            ) as save_setting, patch.object(
-                cancel_control._hard._server,
-                "default_download_root",
-                return_value=root,
-            ), patch.object(
-                cancel_control._hard._server,
-                "prepare_download_root",
-                return_value=root,
-            ):
+                "choose_download_root",
+                return_value=selected_root,
+            ) as chooser:
                 selected, source, remembered = cancel_control.resolve_download_root()
 
-            save_setting.assert_called_once_with(False)
-            self.assertEqual(selected, root)
-            self.assertEqual(source, "configured_default")
-            self.assertTrue(remembered)
+            chooser.assert_called_once_with()
+            self.assertEqual(selected, selected_root)
+            self.assertEqual(source, "prompt_each_time")
+            self.assertFalse(remembered)
 
 
 if __name__ == "__main__":
