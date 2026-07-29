@@ -327,7 +327,10 @@ def _download_prompt_per_file(
                 selected = choose_download_file(downloaded.name, initial_root)
             destination = enforce_actual_suffix(selected, downloaded.suffix)
             if destination.exists():
-                destination.unlink()
+                if destination == selected:
+                    destination.unlink()
+                else:
+                    destination = unique_destination(destination.parent, destination.name)
             shutil.move(str(downloaded), str(destination))
             initial_root = destination.parent
             _server.update(job, output_dir=str(destination.parent))
