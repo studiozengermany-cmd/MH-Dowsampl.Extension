@@ -169,11 +169,6 @@ class AudioCrawler(_core.AudioCrawler):
                 raise PublicAudioError(
                     f"Nguồn trả về {content_type}, không phải dữ liệu audio"
                 )
-            if not is_audio_content_type(content_type) and url_suffix not in AUDIO_SUFFIXES:
-                raise PublicAudioError(
-                    f"Nguồn trả về {content_type or 'dữ liệu không xác định'}, "
-                    "không phải audio"
-                )
 
             first_chunk = response.read(_core.DOWNLOAD_CHUNK_SIZE)
             if not first_chunk:
@@ -188,15 +183,29 @@ class AudioCrawler(_core.AudioCrawler):
                 Path(response_name).suffix.lower() if response_name else ""
             )
             detected_suffix = detect_audio_suffix(first_chunk)
+            declared_audio = (
+                is_audio_content_type(content_type)
+                or url_suffix in AUDIO_SUFFIXES
+                or response_name_suffix in AUDIO_SUFFIXES
+                or detected_suffix is not None
+            )
+            if not declared_audio:
+                raise PublicAudioError(
+                    f"Nguồn trả về {content_type or 'dữ liệu không xác định'}, "
+                    "không xác minh được là audio"
+                )
+
+            # Magic bytes describe the downloaded data more reliably than a
+            # stale URL suffix or an incorrect Content-Type header.
             suffix = (
-                CONTENT_TYPE_SUFFIXES.get(content_type)
+                detected_suffix
+                or CONTENT_TYPE_SUFFIXES.get(content_type)
                 or (url_suffix if url_suffix in AUDIO_SUFFIXES else None)
                 or (
                     response_name_suffix
                     if response_name_suffix in AUDIO_SUFFIXES
                     else None
                 )
-                or detected_suffix
                 or ".bin"
             )
 
