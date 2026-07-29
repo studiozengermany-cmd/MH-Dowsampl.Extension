@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import server  # noqa: F401,E402 - activates runtime compatibility patches
+import direct_audio  # noqa: E402
 from crawler import AudioAsset, AudioCrawler, PublicAudioError  # noqa: E402
 
 
@@ -78,6 +80,35 @@ class DirectAudioDiscoveryTests(unittest.TestCase):
                 crawler._fetch_page_or_direct_asset("https://cdn.test/blob")
 
         self.assertEqual(response.read_count, 1)
+
+    def test_unverified_bin_output_is_deleted(self) -> None:
+        crawler = AudioCrawler(retries=1)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+
+            def create_bin(
+                _crawler: AudioCrawler,
+                _url: str,
+                _title: str | None,
+                target: Path,
+            ) -> Path:
+                destination = target / "unknown.bin"
+                destination.write_bytes(b"binary")
+                return destination
+
+            with patch.object(
+                direct_audio,
+                "_original_download_one",
+                side_effect=create_bin,
+            ):
+                with self.assertRaises(PublicAudioError):
+                    crawler._download_one(
+                        "https://cdn.test/unknown",
+                        "unknown",
+                        folder,
+                    )
+
+            self.assertEqual(list(folder.iterdir()), [])
 
 
 if __name__ == "__main__":
