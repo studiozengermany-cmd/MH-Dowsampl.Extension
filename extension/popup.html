@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MH-Dowsample Extension</title>
     <link rel="stylesheet" href="popup.css" />
-    <link rel="stylesheet" href="popup-settings.css" />
   </head>
   <body>
     <div class="popup-shell">
@@ -37,19 +36,11 @@
         <section class="card action-card" id="action-card">
           <div class="card-heading">
             <span class="badge" id="status-badge">TRẠNG THÁI SẴN SÀNG</span>
-            <p class="card-desc">Dán liên kết chứa âm thanh hoặc link audio trực tiếp để tải file về máy.</p>
+            <p class="card-desc">Dán liên kết Splice hoặc link audio trực tiếp để tải file gốc về máy.</p>
           </div>
 
           <label for="url-input">Liên kết chứa âm thanh</label>
           <textarea id="url-input" rows="3" placeholder="https://splice.com/sounds/..."></textarea>
-
-          <div class="save-controls">
-            <label class="save-toggle" for="ask-each-time">
-              <input id="ask-each-time" type="checkbox" />
-              <span>Hỏi nơi lưu từng file</span>
-            </label>
-            <button id="btn-change-folder" class="btn-folder" type="button">Đổi thư mục</button>
-          </div>
 
           <button id="btn-download" class="btn btn-primary" type="button">
             <span id="btn-text">Quét và tải âm thanh</span>
@@ -78,29 +69,28 @@
             <li><span class="check-icon check-icon--pending" id="check-download">&#9675;</span><span>Tải file gốc</span></li>
             <li><span class="check-icon check-icon--pending" id="check-done">&#9675;</span><span>Hoàn tất xử lý</span></li>
           </ul>
+
+          <button id="btn-cancel" class="btn btn-cancel" type="button">
+            <span id="btn-cancel-text">Hủy tải</span>
+            <span class="btn-icon" aria-hidden="true">×</span>
+          </button>
         </section>
 
         <section id="results-section" class="completion-card" hidden>
           <div class="completion-header">
-            <span class="badge badge--ready">HOÀN TẤT</span>
-            <span class="completion-percent">100%</span>
+            <span class="badge badge--ready" id="result-badge">HOÀN TẤT</span>
+            <span class="completion-percent" id="result-percent">100%</span>
           </div>
           <div class="completion-summary">
             <span class="completion-check" aria-hidden="true">
               <svg width="17" height="17" viewBox="0 0 20 20" fill="none"><path d="m5 10 3 3 7-7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </span>
             <div>
-              <h2>Đã tải xuống thành công</h2>
+              <h2 id="result-title">Đã tải xuống thành công</h2>
               <p>Đã tải xong <strong id="stat-downloaded">0</strong> / <span id="stat-discovered">0</span> file</p>
             </div>
           </div>
-          <p class="failed-row">Lỗi tải: <strong id="stat-failed">0</strong> · Cần kiểm tra: <strong id="stat-review">0</strong></p>
-          <div class="classification-summary" aria-label="Kết quả phân loại">
-            <span>Loop <strong id="stat-loop">0</strong></span>
-            <span>One-Shot <strong id="stat-one-shot">0</strong></span>
-            <span>FX <strong id="stat-fx">0</strong></span>
-            <span>Chưa xác định <strong id="stat-unknown">0</strong></span>
-          </div>
+          <p class="failed-row">Lỗi tải: <strong id="stat-failed">0</strong></p>
           <div class="save-location">
             <span>THƯ MỤC LƯU</span>
             <p id="result-dir" title=""></p>
@@ -126,6 +116,5 @@
       </main>
     </div>
     <script src="popup-core.js"></script>
-    <script src="popup-settings.js"></script>
   </body>
 </html>
