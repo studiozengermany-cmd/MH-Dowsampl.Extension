@@ -1,7 +1,8 @@
-"""Fix discovery of large extensionless direct-audio responses.
+"""Harden discovery and output of direct-audio responses.
 
 Unknown binary responses are identified from the first download chunk. Text-like
-responses are still bounded by the document scan limit.
+responses are still bounded by the document scan limit. Unverified ``.bin``
+outputs are rejected instead of entering the sample library.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from urllib.parse import unquote, urlparse
 
 import crawler as _crawler
 from crawler import (
+    AUDIO_SUFFIXES,
     AudioAsset,
     AudioCrawler,
     PublicAudioError,
@@ -80,6 +82,27 @@ def _fetch_page_or_direct_asset(
         return raw.decode(charset, errors="replace"), None
 
 
-AudioCrawler._fetch_page_or_direct_asset = _fetch_page_or_direct_asset
+_original_download_one = AudioCrawler._download_one
 
-__all__ = ["_fetch_page_or_direct_asset"]
+
+def _verified_download_one(
+    self: AudioCrawler,
+    url: str,
+    title: str | None,
+    folder: Path,
+) -> Path:
+    destination = _original_download_one(self, url, title, folder)
+    if destination.suffix.lower() in AUDIO_SUFFIXES:
+        return destination
+    try:
+        destination.unlink(missing_ok=True)
+    finally:
+        raise PublicAudioError(
+            "Nguồn khai báo audio nhưng không xác định được định dạng file an toàn"
+        )
+
+
+AudioCrawler._fetch_page_or_direct_asset = _fetch_page_or_direct_asset
+AudioCrawler._download_one = _verified_download_one
+
+__all__ = ["_fetch_page_or_direct_asset", "_verified_download_one"]
