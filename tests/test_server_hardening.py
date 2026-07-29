@@ -74,7 +74,7 @@ class ServerHardeningTests(unittest.TestCase):
             self.assertFalse(backend_server.needs_quality_review(good))
             self.assertTrue(backend_server.needs_quality_review(tiny))
 
-    def test_old_per_file_setting_is_disabled_and_default_folder_is_used(self) -> None:
+    def test_ask_each_time_opens_one_folder_dialog_for_the_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir).resolve()
             with patch.object(
@@ -83,26 +83,15 @@ class ServerHardeningTests(unittest.TestCase):
                 return_value=True,
             ), patch.object(
                 backend_server._server,
-                "save_ask_each_time",
-            ) as save_setting, patch.object(
-                backend_server._server,
-                "default_download_root",
-                return_value=root,
-            ), patch.object(
-                backend_server._server,
-                "prepare_download_root",
-                return_value=root,
-            ), patch.object(
-                backend_server._server,
                 "choose_download_root",
-                side_effect=AssertionError("không được mở Save As từng file"),
-            ):
+                return_value=root,
+            ) as chooser:
                 selected, source, remembered = backend_server.resolve_download_root()
 
-            save_setting.assert_called_once_with(False)
+            chooser.assert_called_once_with()
             self.assertEqual(selected, root)
-            self.assertEqual(source, "configured_default")
-            self.assertTrue(remembered)
+            self.assertEqual(source, "prompt_each_time")
+            self.assertFalse(remembered)
 
     def test_run_job_organizes_categories_and_keeps_uncertain_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
