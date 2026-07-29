@@ -1,0 +1,37 @@
+name: Core engine regression
+
+on:
+  push:
+    branches:
+      - fix/core-engine-v1
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile backend
+        run: python -m compileall -q backend tests
+
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check popup JavaScript
+        run: node --check extension/popup-core.js
+
+      - name: Check extension manifest JSON
+        run: python -m json.tool extension/manifest.json > /dev/null
