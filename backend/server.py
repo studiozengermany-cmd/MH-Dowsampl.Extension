@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-if __name__ == "__main__":
-    from server_engine import main
+UNCONFIGURED_LABEL = "Chưa chọn - ứng dụng sẽ hỏi khi bắt đầu tải"
 
-    main()
+if __name__ == "__main__":
+    import server_engine as _implementation
+
+    _implementation.UNCONFIGURED_DOWNLOAD_ROOT_LABEL = UNCONFIGURED_LABEL
+    _implementation.main()
 else:
     import sys
     import server_engine as _implementation
 
+    _implementation.UNCONFIGURED_DOWNLOAD_ROOT_LABEL = UNCONFIGURED_LABEL
     sys.modules[__name__] = _implementation
