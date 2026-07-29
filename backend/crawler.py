@@ -7,6 +7,7 @@ contract while applying narrowly scoped fixes without changing the popup UI.
 from __future__ import annotations
 
 import html
+import re
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse
 
@@ -17,12 +18,40 @@ CONTENT_TYPE_SUFFIXES = _core.CONTENT_TYPE_SUFFIXES
 AudioAsset = _core.AudioAsset
 PublicAudioError = _core.PublicAudioError
 catalogue_title = _core.catalogue_title
-extract_splice_samples = _core.extract_splice_samples
 is_audio_content_type = _core.is_audio_content_type
 is_audio_url = _core.is_audio_url
 sanitize_filename = _core.sanitize_filename
 unique_destination = _core.unique_destination
 validate_http_url = _core.validate_http_url
+
+JSON_NAMED_URL = re.compile(
+    r"[\"'](?P<key>contentUrl|audioUrl|audio_url|previewUrl|preview_url)[\"']\s*:\s*"
+    r"[\"'](?P<url>[^\"']+)[\"']",
+    flags=re.IGNORECASE,
+)
+AUDIO_KIND_TOKENS = {
+    "audio",
+    "wav",
+    "flac",
+    "aiff",
+    "aif",
+    "mp3",
+    "m4a",
+    "aac",
+    "ogg",
+    "opus",
+    "preview",
+    "original",
+    "source",
+    "lossless",
+}
+DOCUMENT_CONTENT_TYPES = {
+    "application/json",
+    "application/javascript",
+    "application/ld+json",
+    "application/xml",
+    "application/xhtml+xml",
+}
 
 
 def _decode_embedded_url(value: str) -> str:
@@ -55,11 +84,12 @@ def extract_generic_audio(
     document: str,
     base_url: str | None = None,
 ) -> list[AudioAsset]:
-    """Extract audio candidates while accepting signed URLs without extensions.
+    """Extract public audio candidates without trusting generic JSON blindly.
 
-    URLs found in explicit audio tags and audio metadata are trusted candidates
-    even when their path has no suffix. Arbitrary URLs found elsewhere still
-    require a recognized audio suffix to avoid collecting unrelated resources.
+    Explicit ``audio``/``source`` tags, audio metadata, and audio-named JSON
+    fields may contain signed stream URLs without file extensions. Generic
+    ``contentUrl`` values must still have a recognized audio suffix because
+    they commonly point to images, documents, or videos.
     """
 
     assets: list[AudioAsset] = []
@@ -82,13 +112,14 @@ def extract_generic_audio(
             base_url=base_url,
             require_audio_suffix=False,
         )
-    for match in _core.JSON_AUDIO_URL.finditer(normalized):
+    for match in JSON_NAMED_URL.finditer(normalized):
+        key = match.group("key").lower()
         _add_candidate(
             assets,
             seen,
-            match.group(1),
+            match.group("url"),
             base_url=base_url,
-            require_audio_suffix=False,
+            require_audio_suffix=key == "contenturl",
         )
     for raw_url in _core.ABSOLUTE_URL.findall(normalized):
         _add_candidate(
@@ -102,9 +133,71 @@ def extract_generic_audio(
     return assets
 
 
-# ``core_engine.extract_splice_page`` resolves this global at call time.
-# Patching it here also hardens the generic fallback used by Splice pages.
+def _splice_candidate(item: object) -> bool:
+    if not isinstance(item, dict):
+        return False
+    raw_url = item.get("url")
+    if not isinstance(raw_url, str) or not raw_url.startswith(("http://", "https://")):
+        return False
+    if is_audio_url(raw_url):
+        return True
+    kind = str(
+        item.get("asset_file_type_slug")
+        or item.get("file_type")
+        or item.get("format")
+        or item.get("type")
+        or ""
+    ).lower()
+    return any(token in kind for token in AUDIO_KIND_TOKENS)
+
+
+def extract_splice_samples(payload: object) -> list[AudioAsset]:
+    """Extract Splice candidates, including signed URLs without suffixes."""
+
+    samples: list[AudioAsset] = []
+    seen_primary: set[str] = set()
+
+    def visit(value: object) -> None:
+        if isinstance(value, list):
+            for child in value:
+                visit(child)
+            return
+        if not isinstance(value, dict):
+            return
+
+        files = value.get("files")
+        if isinstance(files, list):
+            candidates = [item for item in files if _splice_candidate(item)]
+            candidates.sort(key=_core.candidate_quality, reverse=True)
+            if candidates:
+                primary = str(candidates[0]["url"])
+                fallbacks = tuple(
+                    str(item["url"])
+                    for item in candidates[1:]
+                    if str(item["url"]) != primary
+                )
+                if primary not in seen_primary:
+                    samples.append(
+                        AudioAsset(
+                            url=primary,
+                            title=catalogue_title(value),
+                            fallback_urls=fallbacks,
+                        )
+                    )
+                    seen_primary.add(primary)
+
+        for child in value.values():
+            visit(child)
+
+    visit(payload)
+    return samples
+
+
+# ``core_engine.extract_splice_page`` resolves these globals at call time.
+# Patching them here hardens the existing discovery methods without replacing
+# the server contract or changing the extension UI.
 _core.extract_generic_audio = extract_generic_audio
+_core.extract_splice_samples = extract_splice_samples
 extract_splice_page = _core.extract_splice_page
 
 
@@ -115,33 +208,46 @@ def detect_audio_suffix(data: bytes) -> str | None:
         return ".wav"
     if data.startswith(b"fLaC"):
         return ".flac"
-    if data.startswith(b"ID3") or (
-        len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
-    ):
+    if data.startswith(b"ID3"):
         return ".mp3"
+    if len(data) >= 2 and data[0] == 0xFF:
+        second = data[1]
+        if (second & 0xF6) == 0xF0:
+            return ".aac"
+        if (second & 0xE0) == 0xE0 and (second & 0x06) != 0:
+            return ".mp3"
     if data.startswith(b"OggS"):
-        return ".ogg"
+        return ".opus" if b"OpusHead" in data[:512] else ".ogg"
     if len(data) >= 12 and data.startswith(b"FORM") and data[8:12] in {
         b"AIFF",
         b"AIFC",
     }:
         return ".aiff"
     if len(data) >= 12 and data[4:8] == b"ftyp":
-        return ".m4a"
+        sample = data[:65536]
+        if b"soun" in sample and b"vide" not in sample:
+            return ".m4a"
     return None
+
+
+def iso_bmff_contains_video(data: bytes) -> bool:
+    """Return true when an ISO-BMFF/MP4 header exposes a video handler."""
+
+    return len(data) >= 12 and data[4:8] == b"ftyp" and b"vide" in data[:65536]
 
 
 def looks_like_non_audio_payload(data: bytes) -> bool:
     """Detect common HTML, JSON and XML error responses."""
 
-    sample = data[:1024].lstrip().lower()
-    if sample.startswith((b"<!doctype html", b"<html", b"<?xml", b"{", b"[")):
+    sample = data[:1024].lstrip()
+    if sample.startswith(b"\xef\xbb\xbf"):
+        sample = sample[3:].lstrip()
+    lowered = sample.lower()
+    if lowered.startswith((b"<", b"{", b"[")):
         return True
     return any(
-        marker in sample[:512]
+        marker in lowered[:512]
         for marker in (
-            b"<body",
-            b"<head",
             b"access denied",
             b"request blocked",
             b"not authorized",
@@ -150,7 +256,42 @@ def looks_like_non_audio_payload(data: bytes) -> bool:
 
 
 class AudioCrawler(_core.AudioCrawler):
-    """Hardened downloader using the existing discovery/retry implementation."""
+    """Hardened discovery and download using the existing retry implementation."""
+
+    def _fetch_page_or_direct_asset(self, url: str) -> tuple[str | None, AudioAsset | None]:
+        """Recognize extensionless binary audio before treating it as a webpage."""
+
+        response = self._open(url, timeout=45, accept_audio=False)
+        with response:
+            response_url = response.geturl() or url
+            content_type = _core.normalized_content_type(
+                response.headers.get("Content-Type")
+            )
+            if is_audio_content_type(content_type):
+                title = unquote(Path(urlparse(response_url).path).stem) or "sample"
+                return None, AudioAsset(response_url, title)
+
+            raw = response.read(_core.MAX_DOCUMENT_BYTES + 1)
+            if len(raw) > _core.MAX_DOCUMENT_BYTES:
+                raise PublicAudioError("Trang nguồn quá lớn để quét an toàn")
+            if not raw:
+                raise PublicAudioError("Nguồn trả về dữ liệu rỗng")
+
+            detected_suffix = detect_audio_suffix(raw[: _core.DOWNLOAD_CHUNK_SIZE])
+            if detected_suffix is not None and not iso_bmff_contains_video(raw):
+                title = unquote(Path(urlparse(response_url).path).stem) or "sample"
+                return None, AudioAsset(response_url, title)
+
+            text_like = looks_like_non_audio_payload(raw)
+            document_type = content_type.startswith("text/") or content_type in DOCUMENT_CONTENT_TYPES
+            if not text_like and not document_type:
+                raise PublicAudioError(
+                    f"Nguồn trả về {content_type or 'dữ liệu nhị phân không xác định'}, "
+                    "không xác minh được là audio hoặc trang chứa audio"
+                )
+
+            charset = response.headers.get_content_charset() or "utf-8"
+            return raw.decode(charset, errors="replace"), None
 
     def _download_one(self, url: str, title: str | None, folder: Path) -> Path:
         response = self._open(url, timeout=90, accept_audio=True)
@@ -177,6 +318,8 @@ class AudioCrawler(_core.AudioCrawler):
                 raise PublicAudioError(
                     "Nguồn trả về trang HTML/JSON thay vì file audio"
                 )
+            if iso_bmff_contains_video(first_chunk):
+                raise PublicAudioError("Nguồn trả về MP4 có luồng video, không phải sample audio")
 
             response_name = self._response_filename(response)
             response_name_suffix = (
@@ -260,6 +403,7 @@ __all__ = [
     "extract_splice_samples",
     "is_audio_content_type",
     "is_audio_url",
+    "iso_bmff_contains_video",
     "looks_like_non_audio_payload",
     "sanitize_filename",
     "unique_destination",

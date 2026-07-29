@@ -5,7 +5,7 @@ cd /d "%~dp0"
 title MH-Dowsample Server
 
 echo ========================================
-echo   MH-Dowsample Server 1.2.0
+echo   MH-Dowsample Server 1.3.0
 echo ========================================
 echo.
 
