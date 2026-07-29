@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - "fix/core-engine-*"
+      - "fix/*"
   pull_request:
     branches:
       - main
@@ -32,17 +32,14 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Check popup JavaScript
-        run: |
-          node --check extension/popup-core.js
-          node --check extension/popup-settings.js
+        run: node --check extension/popup-core.js
 
       - name: Check extension assets
         run: |
           test -f extension/popup.html
           test -f extension/popup.css
-          test -f extension/popup-settings.css
+          test -f extension/popup-cancel.css
           test -f extension/popup-core.js
-          test -f extension/popup-settings.js
 
       - name: Check extension manifest JSON
         run: python -m json.tool extension/manifest.json > /dev/null
