@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import server as backend_server  # noqa: E402
-import server_streaming  # noqa: E402
 from crawler import AudioAsset  # noqa: E402
 
 
@@ -36,16 +35,6 @@ class OrganizingCrawler:
         payload = valid_wav_bytes() if "Loop" in str(asset.title) else valid_wav_bytes()[:100]
         path.write_bytes(payload)
         return path
-
-
-def selected_download(_crawler: object, asset: AudioAsset, selector: object) -> Path:
-    destination = selector(f"{asset.title}.wav", ".wav")
-    if destination is None:
-        raise backend_server.DestinationSelectionCancelled("Đã hủy lưu file này")
-    path = Path(destination)
-    payload = valid_wav_bytes() if "Loop" in str(asset.title) else valid_wav_bytes()[:100]
-    path.write_bytes(payload)
-    return path
 
 
 class ServerHardeningTests(unittest.TestCase):
@@ -85,64 +74,24 @@ class ServerHardeningTests(unittest.TestCase):
             self.assertFalse(backend_server.needs_quality_review(good))
             self.assertTrue(backend_server.needs_quality_review(tiny))
 
-    def test_per_file_mode_does_not_open_one_folder_dialog_for_the_job(self) -> None:
+    def test_ask_each_time_opens_one_folder_dialog_for_the_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
+            root = Path(temp_dir).resolve()
             with patch.object(
                 backend_server._server,
                 "ask_for_download_root_each_time",
                 return_value=True,
             ), patch.object(
                 backend_server._server,
-                "default_download_root",
-                return_value=root,
-            ), patch.object(
-                backend_server._server,
                 "choose_download_root",
-                side_effect=AssertionError("không được hỏi một thư mục cho cả job"),
-            ):
+                return_value=root,
+            ) as chooser:
                 selected, source, remembered = backend_server.resolve_download_root()
 
-            self.assertEqual(selected, root.resolve())
-            self.assertEqual(source, "prompt_per_file")
+            chooser.assert_called_once_with()
+            self.assertEqual(selected, root)
+            self.assertEqual(source, "prompt_each_time")
             self.assertFalse(remembered)
-
-    def test_per_file_mode_opens_one_save_dialog_for_each_asset(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            staging = root / "staging"
-            job = backend_server.Job(
-                id="prompt",
-                url="https://example.test/source",
-                urls=["https://example.test/source"],
-                source_total=1,
-            )
-            destinations = [root / "Saved Loop.wav", root / "Saved Kick.wav"]
-            with patch.object(backend_server, "AudioCrawler", return_value=OrganizingCrawler()), patch.object(
-                backend_server,
-                "resolve_download_root",
-                return_value=(root, "prompt_per_file", False),
-            ), patch.object(
-                backend_server,
-                "_staging_folder",
-                return_value=staging,
-            ), patch.object(
-                server_streaming,
-                "download_with_selector",
-                side_effect=selected_download,
-            ), patch.object(
-                backend_server,
-                "choose_download_file",
-                side_effect=destinations,
-            ) as save_dialog:
-                backend_server.run_job(job)
-
-            self.assertEqual(save_dialog.call_count, 2)
-            self.assertEqual(job.status, "completed")
-            self.assertEqual(job.downloaded, 2)
-            self.assertTrue((root / "Saved Loop.wav").is_file())
-            self.assertTrue((root / "Saved Kick.wav").is_file())
-            self.assertFalse(staging.exists())
 
     def test_run_job_organizes_categories_and_keeps_uncertain_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -1,4 +1,4 @@
-/* MH-Dowsample Extension — core popup logic. No layout or visual redesign. */
+/* MH-Dowsample Extension — old popup with real job cancellation. */
 
 const API = "http://127.0.0.1:8765";
 const REQUEST_TIMEOUT_MS = 7000;
@@ -11,6 +11,8 @@ const statusBadge = document.querySelector("#status-badge");
 const urlInput = document.querySelector("#url-input");
 const btnDownload = document.querySelector("#btn-download");
 const btnText = document.querySelector("#btn-text");
+const btnCancel = document.querySelector("#btn-cancel");
+const btnCancelText = document.querySelector("#btn-cancel-text");
 const btnOpen = document.querySelector("#btn-open");
 const progressSection = document.querySelector("#progress-section");
 const progressBadge = document.querySelector("#progress-badge");
@@ -25,14 +27,12 @@ const checkDiscover = document.querySelector("#check-discover");
 const checkDownload = document.querySelector("#check-download");
 const checkDone = document.querySelector("#check-done");
 const resultsSection = document.querySelector("#results-section");
+const resultBadge = document.querySelector("#result-badge");
+const resultPercent = document.querySelector("#result-percent");
+const resultTitle = document.querySelector("#result-title");
 const statDiscovered = document.querySelector("#stat-discovered");
 const statDownloaded = document.querySelector("#stat-downloaded");
 const statFailed = document.querySelector("#stat-failed");
-const statReview = document.querySelector("#stat-review");
-const statLoop = document.querySelector("#stat-loop");
-const statOneShot = document.querySelector("#stat-one-shot");
-const statFx = document.querySelector("#stat-fx");
-const statUnknown = document.querySelector("#stat-unknown");
 const resultDir = document.querySelector("#result-dir");
 const emptyState = document.querySelector("#empty-state");
 const message = document.querySelector("#message");
@@ -88,13 +88,13 @@ function resetChecklist() {
 
 function describeConnectionError(error) {
   if (error && error.code === "TIMEOUT") {
-    return "Server có phản hồi quá chậm. Hãy kiểm tra cửa sổ START-SERVER.cmd.";
+    return "Server phản hồi quá chậm. Hãy kiểm tra cửa sổ START-SERVER.cmd.";
   }
   if (error && error.code === "NETWORK") {
     return "Không kết nối được server local tại cổng 8765. Hãy mở START-SERVER.cmd.";
   }
   if (error && error.status === 403) {
-    return "Server đang chạy nhưng từ chối extension. Hãy cập nhật lại cả server và extension cùng một bản.";
+    return "Server từ chối extension. Hãy cập nhật server và extension cùng một bản.";
   }
   return (error && error.message) || "Không kết nối được server local.";
 }
@@ -175,11 +175,13 @@ async function checkServer(options) {
     serverStatus.classList.add("online");
     const folder = health.download_root || "Chưa chọn thư mục lưu";
     serverText.textContent = "Server " + (health.version || "") + " · " + folder;
-    btnDownload.disabled = Boolean(activeJobId);
-    setWorkingState(Boolean(activeJobId));
-    setBadge(statusBadge, activeJobId ? "ĐANG XỬ LÝ" : "TRẠNG THÁI SẴN SÀNG", activeJobId ? "processing" : "ready");
+    if (!activeJobId) {
+      btnDownload.disabled = false;
+      setWorkingState(false);
+      setBadge(statusBadge, "TRẠNG THÁI SẴN SÀNG", "ready");
+    }
     if (!silent && !activeJobId) {
-      showMessage(health.download_root_configured ? "" : "Chưa chọn thư mục; server sẽ hỏi khi bắt đầu tải.");
+      showMessage(health.download_root_configured ? "" : "Chưa chọn thư mục; server sẽ hỏi một lần khi bắt đầu tải.");
     }
     return health;
   } catch (error) {
@@ -187,7 +189,6 @@ async function checkServer(options) {
     serverStatus.classList.remove("online");
     serverText.textContent = "Server ngoại tuyến";
     btnDownload.disabled = true;
-    setWorkingState(Boolean(activeJobId));
     setBadge(statusBadge, activeJobId ? "ĐANG KẾT NỐI LẠI" : "KHÔNG KẾT NỐI", activeJobId ? "processing" : "error");
     if (!silent) {
       showMessage(describeConnectionError(error), "error");
@@ -197,7 +198,12 @@ async function checkServer(options) {
 }
 
 function updateChecklist(job) {
-  if (job.status === "queued") {
+  if (job.cancel_requested) {
+    setCheckState(checkLink, "done");
+    setCheckState(checkDiscover, job.discovered ? "done" : "active");
+    setCheckState(checkDownload, "active");
+    setCheckState(checkDone, "pending");
+  } else if (job.status === "queued") {
     setCheckState(checkLink, "done");
     setCheckState(checkDiscover, "pending");
     setCheckState(checkDownload, "pending");
@@ -229,22 +235,14 @@ function render(job) {
   const total = Number(job.discovered) || 0;
   const downloaded = Number(job.downloaded) || 0;
   const failed = Number(job.failed) || 0;
-  const cancelled = Number(job.cancelled) || 0;
-  const review = Number(job.quality_review) || 0;
-  const done = downloaded + failed + cancelled;
+  const cancelledByUser = Boolean(job.cancelled_by_user);
+  const done = downloaded + failed + (Number(job.cancelled) || 0);
   let percent = total > 0 ? Math.min(100, Math.round((done * 100) / total)) : 0;
   if (job.status === "discovering") {
     const sourceTotal = Number(job.source_total) || 0;
     const sourceProcessed = Number(job.source_processed) || 0;
     percent = sourceTotal > 0 ? Math.min(100, Math.round((sourceProcessed * 100) / sourceTotal)) : 0;
   }
-  const labels = {
-    queued: "XẾP HÀNG",
-    discovering: "ĐANG TÌM KIẾM",
-    downloading: "ĐANG TẢI",
-    completed: "HOÀN TẤT",
-    failed: "THẤT BẠI"
-  };
 
   updateChecklist(job);
 
@@ -252,34 +250,33 @@ function render(job) {
     progressSection.hidden = true;
     emptyState.hidden = true;
     resultsSection.hidden = false;
+    resultsSection.classList.toggle("is-cancelled", cancelledByUser);
     statDiscovered.textContent = String(total);
     statDownloaded.textContent = String(downloaded);
     statFailed.textContent = String(failed + (Number(job.source_failed) || 0));
-    statReview.textContent = String(review);
-    statLoop.textContent = String(Number(job.classified_loop) || 0);
-    statOneShot.textContent = String(Number(job.classified_one_shot) || 0);
-    statFx.textContent = String(Number(job.classified_fx) || 0);
-    statUnknown.textContent = String(Number(job.classified_unknown) || 0);
     resultDir.textContent = job.output_dir || "";
     resultDir.title = job.output_dir || "";
     resultDir.hidden = !job.output_dir;
     btnOpen.hidden = !job.output_dir;
-    setBadge(statusBadge, "HOÀN TẤT", "ready");
-    let text = "Đã tải " + downloaded + " file";
-    const errors = failed + (Number(job.source_failed) || 0);
-    if (review) {
-      text += " · " + review + " cần kiểm tra chất lượng";
-    }
-    if (cancelled) {
-      text += " · " + cancelled + " đã hủy lưu";
-    }
-    if (errors) {
-      text += " · " + errors + " lỗi";
-    }
-    showMessage(text, errors ? "" : "success");
+    btnCancel.hidden = true;
     btnDownload.disabled = false;
     setWorkingState(false);
     btnText.textContent = "Quét và tải âm thanh";
+
+    if (cancelledByUser) {
+      setBadge(statusBadge, "ĐÃ HỦY", "processing");
+      setBadge(resultBadge, "ĐÃ HỦY", "processing");
+      resultPercent.textContent = "—";
+      resultTitle.textContent = "Đã dừng tác vụ";
+      showMessage("Đã hủy tải. Các file hoàn tất trước lúc hủy vẫn được giữ lại.");
+    } else {
+      setBadge(statusBadge, "HOÀN TẤT", "ready");
+      setBadge(resultBadge, "HOÀN TẤT", "ready");
+      resultPercent.textContent = "100%";
+      resultTitle.textContent = "Đã tải xuống thành công";
+      const errors = failed + (Number(job.source_failed) || 0);
+      showMessage("Đã tải " + downloaded + " file" + (errors ? " · " + errors + " lỗi" : ""), errors ? "" : "success");
+    }
     return true;
   }
 
@@ -287,6 +284,7 @@ function render(job) {
     progressSection.hidden = true;
     resultsSection.hidden = true;
     emptyState.hidden = total === 0 ? false : true;
+    btnCancel.hidden = true;
     setBadge(statusBadge, "LỖI", "error");
     const detail = job.error || (job.failures && job.failures[0]) || "Không tải được file.";
     showMessage(detail, "error");
@@ -299,7 +297,20 @@ function render(job) {
   progressSection.hidden = false;
   resultsSection.hidden = true;
   emptyState.hidden = true;
-  setBadge(progressBadge, labels[job.status] || job.status, "processing");
+  btnCancel.hidden = false;
+  btnCancel.disabled = Boolean(job.cancel_requested);
+  btnCancelText.textContent = job.cancel_requested ? "Đang hủy..." : "Hủy tải";
+
+  if (job.cancel_requested) {
+    setBadge(progressBadge, "ĐANG HỦY", "processing");
+  } else if (job.status === "discovering") {
+    setBadge(progressBadge, "ĐANG TÌM KIẾM", "processing");
+  } else if (job.status === "downloading") {
+    setBadge(progressBadge, "ĐANG TẢI", "processing");
+  } else {
+    setBadge(progressBadge, "XẾP HÀNG", "processing");
+  }
+
   if (job.status === "discovering") {
     progressLabel.textContent = "Đã quét";
     counter.textContent = String(Number(job.source_processed) || 0) + "/" + String(Number(job.source_total) || 0);
@@ -314,7 +325,7 @@ function render(job) {
   currentFile.textContent = job.current || "";
   setWorkingState(true);
   btnDownload.disabled = true;
-  btnText.textContent = job.status === "discovering" ? "Đang quét..." : "Đang tải...";
+  btnText.textContent = job.cancel_requested ? "Đang hủy..." : (job.status === "discovering" ? "Đang quét..." : "Đang tải...");
   return false;
 }
 
@@ -338,14 +349,10 @@ function isRetriablePollError(error) {
 async function pollJob(jobId) {
   clearTimeout(pollTimer);
   try {
-    const wasOffline = !serverOnline;
     const job = await request("/jobs/" + jobId);
     pollFailureCount = 0;
     serverOnline = true;
     serverStatus.classList.add("online");
-    if (wasOffline) {
-      serverText.textContent = "Server đã kết nối lại";
-    }
     const finished = render(job);
     if (!finished) {
       schedulePoll(jobId, POLL_INTERVAL_MS);
@@ -366,14 +373,9 @@ async function pollJob(jobId) {
       serverOnline = false;
       serverStatus.classList.remove("online");
       serverText.textContent = "Đang tự kết nối lại...";
-      btnDownload.disabled = true;
-      setWorkingState(true);
       setBadge(statusBadge, "ĐANG KẾT NỐI LẠI", "processing");
-      showMessage("Mất kết nối tạm thời. Extension đang tự kết nối lại; tác vụ trên server không bị hủy.");
-      const delay = Math.min(
-        POLL_RETRY_MAX_MS,
-        POLL_INTERVAL_MS * Math.pow(2, Math.min(pollFailureCount, 4))
-      );
+      showMessage("Mất kết nối tạm thời. Tác vụ trên server vẫn tiếp tục.");
+      const delay = Math.min(POLL_RETRY_MAX_MS, POLL_INTERVAL_MS * Math.pow(2, Math.min(pollFailureCount, 4)));
       schedulePoll(jobId, delay);
       return;
     }
@@ -382,6 +384,7 @@ async function pollJob(jobId) {
     serverStatus.classList.remove("online");
     serverText.textContent = "Server ngoại tuyến";
     btnDownload.disabled = true;
+    btnCancel.disabled = true;
     setWorkingState(false);
     setBadge(statusBadge, "MẤT KẾT NỐI", "error");
     showMessage(describeConnectionError(error), "error");
@@ -425,12 +428,27 @@ btnDownload.addEventListener("click", async function () {
     setWorkingState(false);
     btnText.textContent = "Quét và tải âm thanh";
     showMessage(error.code === "NETWORK" || error.code === "TIMEOUT" ? describeConnectionError(error) : error.message, "error");
-    if (error.code === "NETWORK" || error.code === "TIMEOUT") {
-      serverOnline = false;
-      serverStatus.classList.remove("online");
-      serverText.textContent = "Server ngoại tuyến";
-      setBadge(statusBadge, "KHÔNG KẾT NỐI", "error");
-    }
+  }
+});
+
+btnCancel.addEventListener("click", async function () {
+  if (!activeJobId || btnCancel.disabled) {
+    return;
+  }
+  btnCancel.disabled = true;
+  btnCancelText.textContent = "Đang hủy...";
+  showMessage("Đang yêu cầu server dừng tác vụ...");
+  try {
+    const job = await request("/jobs/" + activeJobId + "/cancel", {
+      method: "POST",
+      body: "{}"
+    });
+    render(job);
+    schedulePoll(activeJobId, 250);
+  } catch (error) {
+    btnCancel.disabled = false;
+    btnCancelText.textContent = "Hủy tải";
+    showMessage(error.message || "Không thể hủy tác vụ.", "error");
   }
 });
 
