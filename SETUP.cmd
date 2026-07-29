@@ -1,16 +1,34 @@
 @echo off
 setlocal
+chcp 65001 >nul
 cd /d "%~dp0"
-echo [1/2] Tao moi truong Python...
-py -3 -m venv .venv
+
+echo [1/2] Tạo môi trường Python local...
+where py >nul 2>&1
+if not errorlevel 1 (
+  py -3 -m venv .venv
+) else (
+  where python >nul 2>&1
+  if errorlevel 1 goto :python_missing
+  python -m venv .venv
+)
 if errorlevel 1 goto :error
-echo [2/2] Hoan tat. Khong can tai them thu vien.
+
+echo [2/2] Hoàn tất. Không cần tải thêm thư viện.
 echo.
-echo Hay bam START-SERVER.cmd, sau do tai thu muc extension vao Chrome.
+echo Hãy chạy START-SERVER.cmd, sau đó nạp thư mục extension vào Chrome hoặc Cốc Cốc.
 pause
 exit /b 0
+
+:python_missing
+echo.
+echo Không tìm thấy Python 3 trên máy.
+echo Hãy cài Python 3 và bật tùy chọn Add Python to PATH.
+pause
+exit /b 1
+
 :error
 echo.
-echo Cai dat that bai. Hay chup man hinh loi gui cho em.
+echo Tạo môi trường Python thất bại. Hãy chụp màn hình lỗi để kiểm tra.
 pause
 exit /b 1
