@@ -45,6 +45,13 @@ AUDIO_KIND_TOKENS = {
     "source",
     "lossless",
 }
+DOCUMENT_CONTENT_TYPES = {
+    "application/json",
+    "application/javascript",
+    "application/ld+json",
+    "application/xml",
+    "application/xhtml+xml",
+}
 
 
 def _decode_embedded_url(value: str) -> str:
@@ -223,14 +230,23 @@ def detect_audio_suffix(data: bytes) -> str | None:
     return None
 
 
+def iso_bmff_contains_video(data: bytes) -> bool:
+    """Return true when an ISO-BMFF/MP4 header exposes a video handler."""
+
+    return len(data) >= 12 and data[4:8] == b"ftyp" and b"vide" in data[:65536]
+
+
 def looks_like_non_audio_payload(data: bytes) -> bool:
     """Detect common HTML, JSON and XML error responses."""
 
-    sample = data[:1024].lstrip().lower()
-    if sample.startswith((b"<", b"{", b"[")):
+    sample = data[:1024].lstrip()
+    if sample.startswith(b"\xef\xbb\xbf"):
+        sample = sample[3:].lstrip()
+    lowered = sample.lower()
+    if lowered.startswith((b"<", b"{", b"[")):
         return True
     return any(
-        marker in sample[:512]
+        marker in lowered[:512]
         for marker in (
             b"access denied",
             b"request blocked",
@@ -240,7 +256,42 @@ def looks_like_non_audio_payload(data: bytes) -> bool:
 
 
 class AudioCrawler(_core.AudioCrawler):
-    """Hardened downloader using the existing discovery/retry implementation."""
+    """Hardened discovery and download using the existing retry implementation."""
+
+    def _fetch_page_or_direct_asset(self, url: str) -> tuple[str | None, AudioAsset | None]:
+        """Recognize extensionless binary audio before treating it as a webpage."""
+
+        response = self._open(url, timeout=45, accept_audio=False)
+        with response:
+            response_url = response.geturl() or url
+            content_type = _core.normalized_content_type(
+                response.headers.get("Content-Type")
+            )
+            if is_audio_content_type(content_type):
+                title = unquote(Path(urlparse(response_url).path).stem) or "sample"
+                return None, AudioAsset(response_url, title)
+
+            raw = response.read(_core.MAX_DOCUMENT_BYTES + 1)
+            if len(raw) > _core.MAX_DOCUMENT_BYTES:
+                raise PublicAudioError("Trang nguồn quá lớn để quét an toàn")
+            if not raw:
+                raise PublicAudioError("Nguồn trả về dữ liệu rỗng")
+
+            detected_suffix = detect_audio_suffix(raw[: _core.DOWNLOAD_CHUNK_SIZE])
+            if detected_suffix is not None and not iso_bmff_contains_video(raw):
+                title = unquote(Path(urlparse(response_url).path).stem) or "sample"
+                return None, AudioAsset(response_url, title)
+
+            text_like = looks_like_non_audio_payload(raw)
+            document_type = content_type.startswith("text/") or content_type in DOCUMENT_CONTENT_TYPES
+            if not text_like and not document_type:
+                raise PublicAudioError(
+                    f"Nguồn trả về {content_type or 'dữ liệu nhị phân không xác định'}, "
+                    "không xác minh được là audio hoặc trang chứa audio"
+                )
+
+            charset = response.headers.get_content_charset() or "utf-8"
+            return raw.decode(charset, errors="replace"), None
 
     def _download_one(self, url: str, title: str | None, folder: Path) -> Path:
         response = self._open(url, timeout=90, accept_audio=True)
@@ -267,6 +318,8 @@ class AudioCrawler(_core.AudioCrawler):
                 raise PublicAudioError(
                     "Nguồn trả về trang HTML/JSON thay vì file audio"
                 )
+            if iso_bmff_contains_video(first_chunk):
+                raise PublicAudioError("Nguồn trả về MP4 có luồng video, không phải sample audio")
 
             response_name = self._response_filename(response)
             response_name_suffix = (
@@ -350,6 +403,7 @@ __all__ = [
     "extract_splice_samples",
     "is_audio_content_type",
     "is_audio_url",
+    "iso_bmff_contains_video",
     "looks_like_non_audio_payload",
     "sanitize_filename",
     "unique_destination",
