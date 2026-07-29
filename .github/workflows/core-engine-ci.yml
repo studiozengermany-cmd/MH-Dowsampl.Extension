@@ -3,6 +3,7 @@ name: Core engine regression
 on:
   push:
     branches:
+      - main
       - "fix/core-engine-*"
   pull_request:
     branches:
