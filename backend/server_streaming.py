@@ -161,8 +161,11 @@ def _download_prompt_per_file(
     job: _hard.Job,
     crawler: AudioCrawler,
     assets: list[AudioAsset],
+    _staging: Path,
     initial_root: Path,
 ) -> None:
+    """Match the legacy callback signature while bypassing staging downloads."""
+
     for asset in assets:
         _hard._server.update(
             job,
