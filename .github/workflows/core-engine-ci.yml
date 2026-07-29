@@ -27,5 +27,11 @@ jobs:
       - name: Compile backend
         run: python -m compileall -q backend tests
 
-      - name: Run tests
+      - name: Run Python tests
         run: python -m unittest discover -s tests -v
+
+      - name: Check popup JavaScript
+        run: node --check extension/popup-core.js
+
+      - name: Check extension manifest JSON
+        run: python -m json.tool extension/manifest.json > /dev/null
