@@ -75,6 +75,22 @@ class CoreEngineHardeningTests(unittest.TestCase):
             self.assertEqual(result.name, "Kick.mp3")
             self.assertEqual(result.read_bytes(), b"ID3-test-audio")
 
+    def test_octet_stream_without_extension_uses_magic_bytes(self) -> None:
+        crawler = AudioCrawler(retries=1)
+        response = FakeResponse(
+            "https://cdn.test/stream?id=123",
+            "application/octet-stream",
+            [b"ID3-stream-audio", b""],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(crawler, "_open", return_value=response):
+                result = crawler._download_one(
+                    "https://cdn.test/stream?id=123",
+                    "Stream",
+                    Path(temp_dir),
+                )
+            self.assertEqual(result.name, "Stream.mp3")
+
     def test_rejects_html_from_audio_looking_url(self) -> None:
         crawler = AudioCrawler(retries=1)
         response = FakeResponse(
