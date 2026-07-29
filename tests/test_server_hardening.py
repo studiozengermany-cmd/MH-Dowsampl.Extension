@@ -18,6 +18,25 @@ class BatchCrawler:
         return [AudioAsset(page_url + "/sample.wav", Path(page_url).name)]
 
 
+def valid_wav_bytes(size: int = 5_000) -> bytes:
+    return b"RIFF" + (b"\x00" * 4) + b"WAVEfmt " + (b"\x00" * 20) + b"data" + (b"\x00" * size)
+
+
+class OrganizingCrawler:
+    def discover(self, _page_url: str) -> list[AudioAsset]:
+        return [
+            AudioAsset("https://cdn.test/loop.wav", "Drum Loop 128 BPM"),
+            AudioAsset("https://cdn.test/kick.wav", "Kick 01"),
+        ]
+
+    def download(self, asset: AudioAsset, folder: Path) -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{asset.title}.wav"
+        payload = valid_wav_bytes() if "Loop" in str(asset.title) else valid_wav_bytes()[:100]
+        path.write_bytes(payload)
+        return path
+
+
 class ServerHardeningTests(unittest.TestCase):
     def test_accepts_more_than_two_hundred_links(self) -> None:
         urls = [f"https://example.test/{index}" for index in range(1_501)]
@@ -45,7 +64,7 @@ class ServerHardeningTests(unittest.TestCase):
         self.assertEqual(backend_server.classify_audio_name("Recorded Audio.wav"), "unknown")
 
     def test_quality_check_keeps_valid_wav_and_flags_tiny_file(self) -> None:
-        valid_wav = b"RIFF" + (b"\x00" * 4) + b"WAVEfmt " + (b"\x00" * 20) + b"data" + (b"\x00" * 5_000)
+        valid_wav = valid_wav_bytes()
         with tempfile.TemporaryDirectory() as temp_dir:
             good = Path(temp_dir) / "Good.wav"
             tiny = Path(temp_dir) / "Tiny.wav"
@@ -76,6 +95,34 @@ class ServerHardeningTests(unittest.TestCase):
             self.assertEqual(selected, root.resolve())
             self.assertEqual(source, "prompt_per_file")
             self.assertFalse(remembered)
+
+    def test_run_job_organizes_categories_and_keeps_uncertain_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            job = backend_server.Job(
+                id="organize",
+                url="https://example.test/source",
+                urls=["https://example.test/source"],
+                source_total=1,
+            )
+            with patch.object(backend_server, "AudioCrawler", return_value=OrganizingCrawler()), patch.object(
+                backend_server,
+                "resolve_download_root",
+                return_value=(root, "per_job", False),
+            ):
+                backend_server.run_job(job)
+
+            output = Path(job.output_dir)
+            self.assertEqual(job.status, "completed")
+            self.assertEqual(job.downloaded, 2)
+            self.assertEqual(job.classified_loop, 1)
+            self.assertEqual(job.classified_one_shot, 1)
+            self.assertEqual(job.quality_review, 1)
+            self.assertEqual(len(list((output / "Loop").glob("*.wav"))), 1)
+            self.assertEqual(
+                len(list((output / "Cần kiểm tra chất lượng" / "One-Shot").glob("*.wav"))),
+                1,
+            )
 
     def test_save_dialog_name_cannot_force_wrong_audio_extension(self) -> None:
         selected = backend_server.enforce_actual_suffix(Path("C:/Audio/Kick.wav"), ".mp3")
