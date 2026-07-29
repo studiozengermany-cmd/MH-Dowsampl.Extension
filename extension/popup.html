@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MH-Dowsample Extension</title>
     <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="popup-settings.css" />
   </head>
   <body>
     <div class="popup-shell">
@@ -36,11 +37,19 @@
         <section class="card action-card" id="action-card">
           <div class="card-heading">
             <span class="badge" id="status-badge">TRẠNG THÁI SẴN SÀNG</span>
-            <p class="card-desc">Dán liên kết Splice hoặc link audio trực tiếp để tải file gốc về máy.</p>
+            <p class="card-desc">Dán liên kết chứa âm thanh hoặc link audio trực tiếp để tải file về máy.</p>
           </div>
 
           <label for="url-input">Liên kết chứa âm thanh</label>
           <textarea id="url-input" rows="3" placeholder="https://splice.com/sounds/..."></textarea>
+
+          <div class="save-controls">
+            <label class="save-toggle" for="ask-each-time">
+              <input id="ask-each-time" type="checkbox" />
+              <span>Hỏi nơi lưu từng file</span>
+            </label>
+            <button id="btn-change-folder" class="btn-folder" type="button">Đổi thư mục</button>
+          </div>
 
           <button id="btn-download" class="btn btn-primary" type="button">
             <span id="btn-text">Quét và tải âm thanh</span>
@@ -111,5 +120,6 @@
       </main>
     </div>
     <script src="popup-core.js"></script>
+    <script src="popup-settings.js"></script>
   </body>
 </html>
