@@ -10,6 +10,9 @@ on:
       - "*.cmd"
       - "README.md"
       - ".github/workflows/package-release.yml"
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
