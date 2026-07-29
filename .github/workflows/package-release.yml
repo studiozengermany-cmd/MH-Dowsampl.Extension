@@ -1,0 +1,70 @@
+name: Package clean runtime
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "extension/**"
+      - "*.cmd"
+      - "README.md"
+      - ".github/workflows/package-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Verify runtime before packaging
+        run: |
+          python -m compileall -q backend
+          node --check extension/popup-core.js
+          python -m json.tool extension/manifest.json > /dev/null
+
+      - name: Build clean folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="MH-Dowsample-1.3.1-CLEAN"
+          mkdir -p "$ROOT/backend" "$ROOT/extension"
+          cp README.md SETUP.cmd START-SERVER.cmd INSTALL-EXTENSION.cmd "$ROOT/"
+          cp backend/*.py backend/requirements.txt "$ROOT/backend/"
+          cp extension/manifest.json extension/popup.html extension/popup.css extension/popup-cancel.css extension/popup-core.js "$ROOT/extension/"
+          cat > "$ROOT/BAT-DAU-O-DAY.txt" <<'EOF'
+          MH-Dowsample 1.3.1 CLEAN
+
+          1. Giải nén ZIP vào một thư mục MỚI.
+          2. Bấm START-SERVER.cmd.
+          3. Chrome > chrome://extensions > bật Chế độ dành cho nhà phát triển.
+          4. Bấm Tải tiện ích đã giải nén và chọn thư mục extension trong gói này.
+
+          Bản này dùng một thư mục cho cả lượt tải, không hỏi nơi lưu từng file.
+          Khi đang quét hoặc tải, popup có nút Hủy tải.
+          EOF
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          root = Path("MH-Dowsample-1.3.1-CLEAN")
+          lines = []
+          for path in sorted(p for p in root.rglob("*") if p.is_file()):
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              lines.append(f"{digest}  {path.relative_to(root).as_posix()}")
+          (root / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload clean ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: MH-Dowsample-1.3.1-CLEAN
+          path: MH-Dowsample-1.3.1-CLEAN
+          if-no-files-found: error
+          retention-days: 30
