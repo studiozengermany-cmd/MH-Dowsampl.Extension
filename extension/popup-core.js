@@ -3,6 +3,7 @@
 const API = "http://127.0.0.1:8765";
 const REQUEST_TIMEOUT_MS = 7000;
 const POLL_INTERVAL_MS = 1000;
+const POLL_RETRY_MAX_MS = 10000;
 
 const serverStatus = document.querySelector("#server-status");
 const serverText = document.querySelector("#server-text");
@@ -33,6 +34,7 @@ const brandLogo = document.querySelector("#brand-logo");
 let pollTimer = null;
 let activeJobId = null;
 let serverOnline = false;
+let pollFailureCount = 0;
 
 class ApiError extends Error {
   constructor(messageText, code, status) {
@@ -79,7 +81,7 @@ function resetChecklist() {
 
 function describeConnectionError(error) {
   if (error && error.code === "TIMEOUT") {
-    return "Server có phản hồi quá chậm. Hãy đóng rồi mở lại START-SERVER.cmd.";
+    return "Server có phản hồi quá chậm. Hãy kiểm tra cửa sổ START-SERVER.cmd.";
   }
   if (error && error.code === "NETWORK") {
     return "Không kết nối được server local tại cổng 8765. Hãy mở START-SERVER.cmd.";
@@ -155,9 +157,6 @@ function parseUrls(value) {
   if (!unique.length) {
     throw new Error("Hãy dán ít nhất một liên kết");
   }
-  if (unique.length > 200) {
-    throw new Error("Mỗi lượt tối đa 200 liên kết");
-  }
   return unique;
 }
 
@@ -169,10 +168,10 @@ async function checkServer(options) {
     serverStatus.classList.add("online");
     const folder = health.download_root || "Chưa chọn thư mục lưu";
     serverText.textContent = "Server " + (health.version || "") + " · " + folder;
-    btnDownload.disabled = false;
-    setWorkingState(false);
-    setBadge(statusBadge, "TRẠNG THÁI SẴN SÀNG", "ready");
-    if (!silent) {
+    btnDownload.disabled = Boolean(activeJobId);
+    setWorkingState(Boolean(activeJobId));
+    setBadge(statusBadge, activeJobId ? "ĐANG XỬ LÝ" : "TRẠNG THÁI SẴN SÀNG", activeJobId ? "processing" : "ready");
+    if (!silent && !activeJobId) {
       showMessage(health.download_root_configured ? "" : "Chưa chọn thư mục; server sẽ hỏi khi bắt đầu tải.");
     }
     return health;
@@ -181,8 +180,8 @@ async function checkServer(options) {
     serverStatus.classList.remove("online");
     serverText.textContent = "Server ngoại tuyến";
     btnDownload.disabled = true;
-    setWorkingState(false);
-    setBadge(statusBadge, "KHÔNG KẾT NỐI", "error");
+    setWorkingState(Boolean(activeJobId));
+    setBadge(statusBadge, activeJobId ? "ĐANG KẾT NỐI LẠI" : "KHÔNG KẾT NỐI", activeJobId ? "processing" : "error");
     if (!silent) {
       showMessage(describeConnectionError(error), "error");
     }
@@ -223,8 +222,15 @@ function render(job) {
   const total = Number(job.discovered) || 0;
   const downloaded = Number(job.downloaded) || 0;
   const failed = Number(job.failed) || 0;
-  const done = downloaded + failed;
-  const percent = total > 0 ? Math.min(100, Math.round((done * 100) / total)) : 0;
+  const cancelled = Number(job.cancelled) || 0;
+  const review = Number(job.quality_review) || 0;
+  const done = downloaded + failed + cancelled;
+  let percent = total > 0 ? Math.min(100, Math.round((done * 100) / total)) : 0;
+  if (job.status === "discovering") {
+    const sourceTotal = Number(job.source_total) || 0;
+    const sourceProcessed = Number(job.source_processed) || 0;
+    percent = sourceTotal > 0 ? Math.min(100, Math.round((sourceProcessed * 100) / sourceTotal)) : 0;
+  }
   const labels = {
     queued: "XẾP HÀNG",
     discovering: "ĐANG TÌM KIẾM",
@@ -249,10 +255,16 @@ function render(job) {
     setBadge(statusBadge, "HOÀN TẤT", "ready");
     let text = "Đã tải " + downloaded + " file";
     const errors = failed + (Number(job.source_failed) || 0);
+    if (review) {
+      text += " · " + review + " cần kiểm tra chất lượng";
+    }
+    if (cancelled) {
+      text += " · " + cancelled + " đã hủy lưu";
+    }
     if (errors) {
       text += " · " + errors + " lỗi";
     }
-    showMessage(text, "success");
+    showMessage(text, errors ? "" : "success");
     btnDownload.disabled = false;
     setWorkingState(false);
     btnText.textContent = "Quét và tải âm thanh";
@@ -276,7 +288,11 @@ function render(job) {
   resultsSection.hidden = true;
   emptyState.hidden = true;
   setBadge(progressBadge, labels[job.status] || job.status, "processing");
-  counter.textContent = total > 0 ? downloaded + "/" + total : "0/?";
+  if (job.status === "discovering") {
+    counter.textContent = String(Number(job.source_processed) || 0) + "/" + String(Number(job.source_total) || 0) + " link";
+  } else {
+    counter.textContent = total > 0 ? downloaded + "/" + total : "0/?";
+  }
   progressBar.style.width = percent + "%";
   progressPercent.textContent = percent + "%";
   currentFile.textContent = job.current || "";
@@ -286,27 +302,69 @@ function render(job) {
   return false;
 }
 
+function schedulePoll(jobId, delay) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(function () {
+    pollJob(jobId);
+  }, delay);
+}
+
+function isRetriablePollError(error) {
+  return Boolean(
+    error &&
+    (error.code === "NETWORK" ||
+      error.code === "TIMEOUT" ||
+      error.code === "INVALID_RESPONSE" ||
+      Number(error.status) >= 500)
+  );
+}
+
 async function pollJob(jobId) {
   clearTimeout(pollTimer);
   try {
+    const wasOffline = !serverOnline;
     const job = await request("/jobs/" + jobId);
+    pollFailureCount = 0;
     serverOnline = true;
+    serverStatus.classList.add("online");
+    if (wasOffline) {
+      serverText.textContent = "Server đã kết nối lại";
+    }
     const finished = render(job);
     if (!finished) {
-      pollTimer = setTimeout(function () {
-        pollJob(jobId);
-      }, POLL_INTERVAL_MS);
+      schedulePoll(jobId, POLL_INTERVAL_MS);
     }
   } catch (error) {
     if (error && error.status === 404) {
       activeJobId = null;
+      pollFailureCount = 0;
       await chrome.storage.local.remove("lastJobId");
       btnDownload.disabled = !serverOnline;
       setWorkingState(false);
       showMessage("Tác vụ cũ không còn trong server. Anh có thể bắt đầu lượt mới.");
       return;
     }
+
+    if (isRetriablePollError(error) && activeJobId === jobId) {
+      pollFailureCount += 1;
+      serverOnline = false;
+      serverStatus.classList.remove("online");
+      serverText.textContent = "Đang tự kết nối lại...";
+      btnDownload.disabled = true;
+      setWorkingState(true);
+      setBadge(statusBadge, "ĐANG KẾT NỐI LẠI", "processing");
+      showMessage("Mất kết nối tạm thời. Extension đang tự kết nối lại; tác vụ trên server không bị hủy.");
+      const delay = Math.min(
+        POLL_RETRY_MAX_MS,
+        POLL_INTERVAL_MS * Math.pow(2, Math.min(pollFailureCount, 4))
+      );
+      schedulePoll(jobId, delay);
+      return;
+    }
+
     serverOnline = false;
+    serverStatus.classList.remove("online");
+    serverText.textContent = "Server ngoại tuyến";
     btnDownload.disabled = true;
     setWorkingState(false);
     setBadge(statusBadge, "MẤT KẾT NỐI", "error");
@@ -323,6 +381,8 @@ btnDownload.addEventListener("click", async function () {
     return;
   }
 
+  clearTimeout(pollTimer);
+  pollFailureCount = 0;
   btnDownload.disabled = true;
   setWorkingState(true);
   btnText.textContent = "Đang gửi...";
@@ -379,6 +439,9 @@ btnOpen.addEventListener("click", async function () {
   try {
     await checkServer();
   } catch (_error) {
+    if (activeJobId) {
+      pollJob(activeJobId);
+    }
     return;
   }
   if (activeJobId) {
