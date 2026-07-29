@@ -14,7 +14,9 @@ const btnText = document.querySelector("#btn-text");
 const btnOpen = document.querySelector("#btn-open");
 const progressSection = document.querySelector("#progress-section");
 const progressBadge = document.querySelector("#progress-badge");
+const progressLabel = document.querySelector("#progress-label");
 const counter = document.querySelector("#counter");
+const progressUnit = document.querySelector("#progress-unit");
 const progressBar = document.querySelector("#progress-bar");
 const progressPercent = document.querySelector("#progress-percent");
 const currentFile = document.querySelector("#current-file");
@@ -299,9 +301,13 @@ function render(job) {
   emptyState.hidden = true;
   setBadge(progressBadge, labels[job.status] || job.status, "processing");
   if (job.status === "discovering") {
-    counter.textContent = String(Number(job.source_processed) || 0) + "/" + String(Number(job.source_total) || 0) + " link";
+    progressLabel.textContent = "Đã quét";
+    counter.textContent = String(Number(job.source_processed) || 0) + "/" + String(Number(job.source_total) || 0);
+    progressUnit.textContent = "link";
   } else {
+    progressLabel.textContent = "Đã tải";
     counter.textContent = total > 0 ? downloaded + "/" + total : "0/?";
+    progressUnit.textContent = "file";
   }
   progressBar.style.width = percent + "%";
   progressPercent.textContent = percent + "%";
