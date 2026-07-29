@@ -97,6 +97,20 @@ class CoreEngineHardeningTests(unittest.TestCase):
         self.assertEqual(assets[0].url, "https://cdn.test/download?token=abc")
         self.assertEqual(assets[0].fallback_urls, ("https://cdn.test/preview.mp3",))
 
+    def test_discover_recognizes_extensionless_octet_stream_audio(self) -> None:
+        crawler = AudioCrawler(retries=1)
+        response = FakeResponse(
+            "https://cdn.test/stream?id=direct",
+            "application/octet-stream",
+            [b"ID3-direct-audio", b""],
+        )
+        with patch.object(crawler, "_open", return_value=response):
+            assets = crawler.discover("https://cdn.test/stream?id=direct")
+        self.assertEqual(
+            assets,
+            [AudioAsset("https://cdn.test/stream?id=direct", "stream")],
+        )
+
     def test_fallback_extension_matches_downloaded_format(self) -> None:
         crawler = AudioCrawler(retries=1)
         response = FakeResponse(
@@ -165,6 +179,24 @@ class CoreEngineHardeningTests(unittest.TestCase):
                     crawler._download_one(
                         "https://cdn.test/content?id=video",
                         "Not Audio",
+                        Path(temp_dir),
+                    )
+            self.assertEqual(list(Path(temp_dir).iterdir()), [])
+
+    def test_rejects_video_even_when_url_looks_like_m4a(self) -> None:
+        crawler = AudioCrawler(retries=1)
+        video_bytes = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 20 + b"vide"
+        response = FakeResponse(
+            "https://cdn.test/fake.m4a",
+            "audio/mp4",
+            [video_bytes, b""],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(crawler, "_open", return_value=response):
+                with self.assertRaises(PublicAudioError):
+                    crawler._download_one(
+                        "https://cdn.test/fake.m4a",
+                        "Fake M4A",
                         Path(temp_dir),
                     )
             self.assertEqual(list(Path(temp_dir).iterdir()), [])
