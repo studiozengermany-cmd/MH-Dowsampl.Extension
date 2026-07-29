@@ -13,8 +13,9 @@ class ExtensionContractTests(unittest.TestCase):
     def test_every_javascript_id_selector_exists_in_popup_html(self) -> None:
         html = (EXTENSION / "popup.html").read_text(encoding="utf-8")
         html_ids = set(re.findall(r'\bid="([^"]+)"', html))
+        script_names = re.findall(r'<script\s+src="([^"]+\.js)"', html)
         selectors: set[str] = set()
-        for script_name in ("popup-core.js", "popup-settings.js"):
+        for script_name in script_names:
             script = (EXTENSION / script_name).read_text(encoding="utf-8")
             selectors.update(re.findall(r'querySelector\("#([^"]+)"\)', script))
 
@@ -31,10 +32,17 @@ class ExtensionContractTests(unittest.TestCase):
         missing = [value for value in local_references if not (EXTENSION / value).is_file()]
         self.assertEqual(missing, [])
 
+    def test_old_popup_has_cancel_but_no_per_file_prompt(self) -> None:
+        html = (EXTENSION / "popup.html").read_text(encoding="utf-8")
+        self.assertIn('id="btn-cancel"', html)
+        self.assertNotIn('id="ask-each-time"', html)
+        self.assertNotIn('id="btn-change-folder"', html)
+        self.assertNotIn("popup-settings.js", html)
+
     def test_version_is_synchronized(self) -> None:
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
         version = manifest["version"]
-        server_source = (ROOT / "backend" / "server_hardening.py").read_text(encoding="utf-8")
+        server_source = (ROOT / "backend" / "cancel_control.py").read_text(encoding="utf-8")
         launcher = (ROOT / "START-SERVER.cmd").read_text(encoding="utf-8")
 
         self.assertIn(f'APP_VERSION = "{version}"', server_source)
