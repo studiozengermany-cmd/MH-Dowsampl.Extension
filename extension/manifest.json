@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MH-Downsample Pro",
-  "version": "1.2.0",
-  "description": "Trình thu thập và tải file âm thanh công khai về máy local.",
+  "version": "1.3.0",
+  "description": "Trình thu thập, kiểm tra và tải file âm thanh công khai về máy local.",
   "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1:8765/*"],
   "action": {
