@@ -91,6 +91,23 @@ class CoreEngineHardeningTests(unittest.TestCase):
                 )
             self.assertEqual(result.name, "Stream.mp3")
 
+    def test_magic_bytes_override_wrong_declared_format(self) -> None:
+        crawler = AudioCrawler(retries=1)
+        wav_bytes = b"RIFF" + (b"\x00" * 4) + b"WAVEfmt "
+        response = FakeResponse(
+            "https://cdn.test/wrong.mp3",
+            "audio/mpeg",
+            [wav_bytes, b""],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(crawler, "_open", return_value=response):
+                result = crawler._download_one(
+                    "https://cdn.test/wrong.mp3",
+                    "Recorded.mp3",
+                    Path(temp_dir),
+                )
+            self.assertEqual(result.name, "Recorded.wav")
+
     def test_rejects_html_from_audio_looking_url(self) -> None:
         crawler = AudioCrawler(retries=1)
         response = FakeResponse(
