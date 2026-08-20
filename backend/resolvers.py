@@ -8,6 +8,7 @@ no public URL to fetch, so they are simply not supported.
 from __future__ import annotations
 
 import shutil
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -57,12 +58,17 @@ def probe_entries(url: str) -> list[str]:
 
 
 def download_audio(url: str, folder: Path) -> list[Path]:
-    """Download and extract audio via ffmpeg. Return the files produced."""
+    """Download and extract audio via ffmpeg. Return the files produced.
+
+    Output is written to a unique subfolder so concurrent download workers
+    sharing ``folder`` never claim each other's files. The caller is expected
+    to move the returned files to their final destination.
+    """
 
     if not ytdlp_available():
         raise PublicAudioError("Chua cai yt-dlp/ffmpeg (xem requirements.txt)")
-    folder.mkdir(parents=True, exist_ok=True)
-    before = set(folder.glob("*"))
+    work = folder / f".resolve-{uuid.uuid4().hex}"
+    work.mkdir(parents=True, exist_ok=True)
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -70,7 +76,7 @@ def download_audio(url: str, folder: Path) -> list[Path]:
         "retries": 3,
         "socket_timeout": SOCKET_TIMEOUT,
         "windowsfilenames": True,
-        "outtmpl": str(folder / "%(title).180B [%(id)s].%(ext)s"),
+        "outtmpl": str(work / "%(title).180B [%(id)s].%(ext)s"),
         "format": "bestaudio/best",
         "postprocessors": [
             {"key": "FFmpegExtractAudio", "preferredcodec": PREFERRED_CODEC},
@@ -85,8 +91,8 @@ def download_audio(url: str, folder: Path) -> list[Path]:
             raise PublicAudioError(f"Khong tai duoc tu {host}: {exc}") from exc
     produced = [
         path
-        for path in folder.glob("*")
-        if path not in before and path.suffix.lower() != ".part"
+        for path in work.glob("*")
+        if path.is_file() and path.suffix.lower() != ".part"
     ]
     if not produced:
         raise PublicAudioError(
