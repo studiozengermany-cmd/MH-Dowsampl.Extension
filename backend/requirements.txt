@@ -1,1 +1,2 @@
-# MVP này chỉ dùng thư viện chuẩn đi kèm Python.
+yt-dlp>=2024.0.0
+# ffmpeg must be available on PATH (system package, not a pip dependency).

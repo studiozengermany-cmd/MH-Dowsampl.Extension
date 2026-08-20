@@ -38,7 +38,7 @@ def cancel_job(job_id: str) -> dict[str, object] | None:
             return None
         if job.status not in {"completed", "failed"}:
             setattr(job, "cancel_requested", True)
-            job.current = "Đang dừng tác vụ..."
+            job.current = "\u0110ang d\u1eebng t\u00e1c v\u1ee5..."
         return job.public()
 
 
@@ -92,7 +92,7 @@ def discover_assets(job: _hard.Job, crawler: _hard.AudioCrawler) -> list[_hard.A
                 break
             _hard._server.update(
                 job,
-                current=f"Đang quét nhóm {batch_index}/{batch_total}: {source_url}",
+                current=f"\u0110ang qu\u00e9t nh\u00f3m {batch_index}/{batch_total}: {source_url}",
             )
             try:
                 found = crawler.discover(source_url)
@@ -111,9 +111,18 @@ def discover_assets(job: _hard.Job, crawler: _hard.AudioCrawler) -> list[_hard.A
                 job.discovered = len(assets)
             if len(assets) > _hard.MAX_DISCOVERED_ASSETS:
                 raise RuntimeError(
-                    f"Tìm thấy hơn {_hard.MAX_DISCOVERED_ASSETS} file; hãy chia nguồn thành nhiều lượt"
+                    f"T\u00ecm th\u1ea5y h\u01a1n {_hard.MAX_DISCOVERED_ASSETS} file; h\u00e3y chia ngu\u1ed3n th\u00e0nh nhi\u1ec1u l\u01b0\u1ee3t"
                 )
     return assets
+
+
+def _organize_and_record(job: _hard.Job, downloaded: Path, output_root: Path) -> None:
+    """Classify, file into a category folder, and count one produced file."""
+
+    category = _hard.classify_audio_name(downloaded.name)
+    review = _hard.needs_quality_review(downloaded)
+    _hard._organize_download(downloaded, output_root, category, review)
+    _hard._record_download(job, category, review)
 
 
 def _download_to_job_folder(
@@ -122,7 +131,11 @@ def _download_to_job_folder(
     assets: list[_hard.AudioAsset],
     output_root: Path,
 ) -> None:
-    """Submit only one worker-wave at a time so cancel remains responsive."""
+    """Submit only one worker-wave at a time so cancel remains responsive.
+
+    ``crawler.download`` returns a single Path for direct assets and a list of
+    Paths for resolver assets (playlists / albums). Both shapes are handled.
+    """
 
     wave_size = max(1, int(_hard._server.DOWNLOAD_WORKERS))
     for offset in range(0, len(assets), wave_size):
@@ -140,16 +153,14 @@ def _download_to_job_folder(
                     current=asset.title or Path(urlparse(asset.url).path).name,
                 )
                 try:
-                    downloaded = future.result()
-                    category = _hard.classify_audio_name(downloaded.name)
-                    review = _hard.needs_quality_review(downloaded)
-                    _hard._organize_download(downloaded, output_root, category, review)
+                    result = future.result()
+                    produced = result if isinstance(result, list) else [result]
+                    for downloaded in produced:
+                        _organize_and_record(job, downloaded, output_root)
                 except Exception as exc:
                     with _hard._server.LOCK:
                         job.failed += 1
                     _hard._server.append_failure(job, f"{asset.title or asset.url}: {exc}")
-                else:
-                    _hard._record_download(job, category, review)
 
 
 def _finish_cancelled(job: _hard.Job) -> None:
@@ -194,7 +205,7 @@ def run_job(
             return
         if not assets:
             raise RuntimeError(
-                "Không tìm thấy đường dẫn âm thanh công khai từ các liên kết đã nhập"
+                "Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01b0\u1eddng d\u1eabn \u00e2m thanh c\u00f4ng khai t\u1eeb c\u00e1c li\u00ean k\u1ebft \u0111\u00e3 nh\u1eadp"
             )
 
         _hard._server.update(job, status="downloading", discovered=len(assets), current="")
@@ -207,9 +218,9 @@ def run_job(
         if job.downloaded:
             error = ""
         elif job.failures:
-            error = "Không tải được file nào. " + job.failures[0]
+            error = "Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c file n\u00e0o. " + job.failures[0]
         else:
-            error = "Không tải được file âm thanh nào"
+            error = "Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c file \u00e2m thanh n\u00e0o"
         _hard._server.update(
             job,
             status=final_status,
@@ -243,7 +254,7 @@ def _do_post_with_cancel(self: object) -> None:
         return
     payload = cancel_job(match.group(1))
     if payload is None:
-        self._json({"error": "Không tìm thấy tác vụ"}, 404)
+        self._json({"error": "Kh\u00f4ng t\u00ecm th\u1ea5y t\u00e1c v\u1ee5"}, 404)
         return
     self._json(payload, 202)
 

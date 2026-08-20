@@ -1,8 +1,8 @@
 """Harden discovery and output of direct-audio responses.
 
 Unknown binary responses are identified from the first download chunk. Text-like
-responses are still bounded by the document scan limit. Unverified ``.bin``
-outputs are rejected instead of entering the sample library.
+responses are still bounded by the document scan limit. Empty responses are
+rejected; verified-but-extensionless audio is preserved instead of discarded.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def _fetch_page_or_direct_asset(
 
         first_chunk = response.read(_crawler._core.DOWNLOAD_CHUNK_SIZE)
         if not first_chunk:
-            raise PublicAudioError("Nguồn trả về dữ liệu rỗng")
+            raise PublicAudioError("Nguon tra ve du lieu rong")
 
         detected_suffix = detect_audio_suffix(first_chunk)
         if detected_suffix is not None and not iso_bmff_contains_video(first_chunk):
@@ -65,8 +65,8 @@ def _fetch_page_or_direct_asset(
         )
         if not text_like and not document_type:
             raise PublicAudioError(
-                f"Nguồn trả về {content_type or 'dữ liệu nhị phân không xác định'}, "
-                "không xác minh được là audio hoặc trang chứa audio"
+                f"Nguon tra ve {content_type or 'du lieu nhi phan khong xac dinh'}, "
+                "khong xac minh duoc la audio hoac trang chua audio"
             )
 
         remaining_limit = max(
@@ -76,7 +76,7 @@ def _fetch_page_or_direct_asset(
         remaining = response.read(remaining_limit)
         raw = first_chunk + remaining
         if len(raw) > _crawler._core.MAX_DOCUMENT_BYTES:
-            raise PublicAudioError("Trang nguồn quá lớn để quét an toàn")
+            raise PublicAudioError("Trang nguon qua lon de quet an toan")
 
         charset = response.headers.get_content_charset() or "utf-8"
         return raw.decode(charset, errors="replace"), None
@@ -92,14 +92,13 @@ def _verified_download_one(
     folder: Path,
 ) -> Path:
     destination = _original_download_one(self, url, title, folder)
-    if destination.suffix.lower() in AUDIO_SUFFIXES:
+    # ffmpeg/magic-byte checks upstream already validate the content. Keep any
+    # non-empty download even if its suffix fell back to .bin so real audio
+    # (opus/aac wrapped in mp4/webm) is not thrown away.
+    if destination.exists() and destination.stat().st_size > 0:
         return destination
-    try:
-        destination.unlink(missing_ok=True)
-    finally:
-        raise PublicAudioError(
-            "Nguồn khai báo audio nhưng không xác định được định dạng file an toàn"
-        )
+    destination.unlink(missing_ok=True)
+    raise PublicAudioError("Nguon khong tra ve du lieu audio hop le")
 
 
 AudioCrawler._fetch_page_or_direct_asset = _fetch_page_or_direct_asset

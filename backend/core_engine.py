@@ -60,7 +60,9 @@ META_AUDIO = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 JSON_AUDIO_URL = re.compile(
-    r"[\"'](?:contentUrl|audioUrl|audio_url|previewUrl|preview_url)[\"']\s*:\s*"
+    r"[\"'](?:contentUrl|audioUrl|audio_url|previewUrl|preview_url|"
+    r"stream_url|streamUrl|hls_url|hlsUrl|mpd_url|mpdUrl|mp4|m4a|src|file|"
+    r"media|download_url|downloadUrl|asset_url|assetUrl)[\"']\s*:\s*"
     r"[\"']([^\"']+)[\"']",
     flags=re.IGNORECASE,
 )
@@ -85,13 +87,15 @@ class AudioAsset:
     url: str
     title: str | None = None
     fallback_urls: tuple[str, ...] = field(default_factory=tuple, compare=False)
+    resolver: str | None = field(default=None, compare=False)
+    expected_files: int = field(default=1, compare=False)
 
 
 def validate_http_url(value: str) -> str:
     value = value.strip()
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise ValueError("Liên kết phải bắt đầu bằng http:// hoặc https://")
+        raise ValueError("Lien ket phai bat dau bang http:// hoac https://")
     return value
 
 
@@ -305,26 +309,26 @@ def unique_destination(folder: Path, filename: str) -> Path:
         candidate = folder / f"{stem} ({index}){suffix}"
         if not candidate.exists() and not candidate.with_suffix(candidate.suffix + ".part").exists():
             return candidate
-    raise RuntimeError("Không thể tạo tên file không trùng")
+    raise RuntimeError("Khong the tao ten file khong trung")
 
 
 def readable_network_error(exc: BaseException, url: str) -> PublicAudioError:
     host = urlparse(url).hostname or url
     if isinstance(exc, HTTPError):
         if exc.code in {401, 403}:
-            return PublicAudioError(f"Nguồn {host} từ chối truy cập công khai (HTTP {exc.code})")
+            return PublicAudioError(f"Nguon {host} tu choi truy cap cong khai (HTTP {exc.code})")
         if exc.code == 404:
-            return PublicAudioError(f"File không còn tồn tại trên {host} (HTTP 404)")
+            return PublicAudioError(f"File khong con ton tai tren {host} (HTTP 404)")
         if exc.code == 429:
-            return PublicAudioError(f"Nguồn {host} đang giới hạn lượt tải (HTTP 429)")
-        return PublicAudioError(f"Nguồn {host} trả về HTTP {exc.code}")
+            return PublicAudioError(f"Nguon {host} dang gioi han luot tai (HTTP 429)")
+        return PublicAudioError(f"Nguon {host} tra ve HTTP {exc.code}")
     if isinstance(exc, (socket.timeout, TimeoutError)):
-        return PublicAudioError(f"Kết nối tới {host} bị quá thời gian")
+        return PublicAudioError(f"Ket noi toi {host} bi qua thoi gian")
     if isinstance(exc, URLError):
         reason = getattr(exc, "reason", None)
         if isinstance(reason, socket.timeout):
-            return PublicAudioError(f"Kết nối tới {host} bị quá thời gian")
-        return PublicAudioError(f"Không kết nối được tới {host}: {reason or exc}")
+            return PublicAudioError(f"Ket noi toi {host} bi qua thoi gian")
+        return PublicAudioError(f"Khong ket noi duoc toi {host}: {reason or exc}")
     return PublicAudioError(str(exc))
 
 
@@ -367,7 +371,7 @@ class AudioCrawler:
     def _read_document(self, response: BinaryIO) -> str:
         raw = response.read(MAX_DOCUMENT_BYTES + 1)
         if len(raw) > MAX_DOCUMENT_BYTES:
-            raise PublicAudioError("Trang nguồn quá lớn để quét an toàn")
+            raise PublicAudioError("Trang nguon qua lon de quet an toan")
         headers = getattr(response, "headers")
         charset = headers.get_content_charset() or "utf-8"
         return raw.decode(charset, errors="replace")
@@ -390,7 +394,40 @@ class AudioCrawler:
         hostname = (urlparse(page_url).hostname or "").lower()
         if hostname == "splice.com" or hostname.endswith(".splice.com"):
             return self._discover_splice(page_url)
+
+        resolver_assets = self._discover_via_resolver(page_url)
+        if resolver_assets:
+            return resolver_assets
         return self._discover_generic(page_url)
+
+    def _discover_via_resolver(self, page_url: str) -> list[AudioAsset]:
+        """Use the universal resolver so any public link yields sample audio.
+
+        Falls back silently to static HTML scanning when the resolver is not
+        installed or cannot enumerate the link.
+        """
+
+        try:
+            import resolvers
+        except ImportError:
+            return []
+        if not resolvers.ytdlp_available():
+            return []
+        try:
+            titles = resolvers.probe_entries(page_url)
+        except PublicAudioError:
+            return []
+        if not titles:
+            return []
+        label = titles[0] if len(titles) == 1 else f"{len(titles)} muc"
+        return [
+            AudioAsset(
+                url=page_url,
+                title=label,
+                resolver="yt-dlp",
+                expected_files=len(titles),
+            )
+        ]
 
     @staticmethod
     def _with_page(url: str, page: int) -> str:
@@ -410,7 +447,7 @@ class AudioCrawler:
         )
         if total_pages > MAX_PAGES:
             raise PublicAudioError(
-                f"Trang có {total_pages} phần; giới hạn an toàn là {MAX_PAGES}"
+                f"Trang co {total_pages} phan; gioi han an toan la {MAX_PAGES}"
             )
 
         assets = list(first_assets)
@@ -429,7 +466,7 @@ class AudioCrawler:
                     assets.append(item)
                     seen.add(item.url)
         if not assets:
-            raise PublicAudioError("Không tìm thấy đường dẫn âm thanh công khai trên trang")
+            raise PublicAudioError("Khong tim thay duong dan am thanh cong khai tren trang")
         return assets
 
     def _discover_generic(self, page_url: str) -> list[AudioAsset]:
@@ -438,7 +475,7 @@ class AudioCrawler:
             return [direct]
         assets = extract_generic_audio(document or "", base_url=page_url)
         if not assets:
-            raise PublicAudioError("Không tìm thấy đường dẫn âm thanh công khai trên trang")
+            raise PublicAudioError("Khong tim thay duong dan am thanh cong khai tren trang")
         return assets
 
     def _download_one(self, url: str, title: str | None, folder: Path) -> Path:
@@ -449,7 +486,7 @@ class AudioCrawler:
             url_suffix = audio_suffix_from_url(response_url)
             if not is_audio_content_type(content_type) and url_suffix not in AUDIO_SUFFIXES:
                 raise PublicAudioError(
-                    f"Nguồn trả về {content_type or 'dữ liệu không xác định'}, không phải audio"
+                    f"Nguon tra ve {content_type or 'du lieu khong xac dinh'}, khong phai audio"
                 )
 
             suffix = (
@@ -485,15 +522,18 @@ class AudioCrawler:
                         handle.write(chunk)
                         written += len(chunk)
                 if written <= 0:
-                    raise PublicAudioError("Nguồn trả về file rỗng")
+                    raise PublicAudioError("Nguon tra ve file rong")
                 partial.replace(destination)
             except Exception:
                 partial.unlink(missing_ok=True)
                 raise
             return destination
 
-    def download(self, asset: AudioAsset, folder: Path) -> Path:
+    def download(self, asset: AudioAsset, folder: Path):
         folder.mkdir(parents=True, exist_ok=True)
+        if asset.resolver == "yt-dlp":
+            import resolvers
+            return resolvers.download_audio(asset.url, folder)
         errors: list[str] = []
         candidates = (asset.url, *asset.fallback_urls)
         for index, url in enumerate(candidates):
@@ -504,7 +544,7 @@ class AudioCrawler:
                 errors.append(str(readable))
                 if index + 1 >= len(candidates):
                     break
-        raise PublicAudioError("; fallback thất bại: ".join(errors))
+        raise PublicAudioError("; fallback that bai: ".join(errors))
 
     @staticmethod
     def _response_filename(response: object) -> str | None:
